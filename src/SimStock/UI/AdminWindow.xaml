@@ -1,0 +1,219 @@
+<Window
+    x:Class="SimStock.AdminWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="水银韭菜机 - 管理面板"
+    Width="900"
+    Height="600"
+    WindowStartupLocation="CenterScreen">
+    <TabControl>
+        <!--  Tab 1: 用户管理  -->
+        <TabItem Header="用户管理">
+            <Grid Margin="10">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <StackPanel Margin="0,0,0,10" Orientation="Horizontal">
+                    <Button
+                        Width="80"
+                        Margin="0,0,10,0"
+                        Click="RefreshUsers_Click"
+                        Content="刷新" />
+                    <TextBlock
+                        Margin="0,0,5,0"
+                        VerticalAlignment="Center"
+                        Text="搜索QQ:" />
+                    <TextBox
+                        x:Name="UserSearchBox"
+                        Width="150"
+                        Margin="0,0,10,0" />
+                    <Button
+                        Width="60"
+                        Click="SearchUser_Click"
+                        Content="查找" />
+                    <Button
+                        Width="100"
+                        Margin="20,0,0,0"
+                        Click="ResetUser_Click"
+                        Content="重置选中账户" />
+                </StackPanel>
+                <DataGrid
+                    x:Name="UsersGrid"
+                    Grid.Row="1"
+                    AutoGenerateColumns="True"
+                    AutoGeneratingColumn="DataGrid_AutoGeneratingColumn"
+                    IsReadOnly="True"
+                    SelectionMode="Single" />
+            </Grid>
+        </TabItem>
+
+        <!--  Tab 2: 持仓管理  -->
+        <TabItem Header="持仓管理">
+            <Grid Margin="10">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <StackPanel Margin="0,0,0,10" Orientation="Horizontal">
+                    <Button
+                        Width="80"
+                        Click="RefreshPositions_Click"
+                        Content="刷新" />
+                    <Button
+                        Width="80"
+                        Margin="10,0,0,0"
+                        Click="SavePositions_Click"
+                        Content="保存修改" />
+                    <Button
+                        Width="80"
+                        Margin="10,0,0,0"
+                        Click="DeletePosition_Click"
+                        Content="删除选中" />
+                    <TextBlock
+                        Margin="20,0,0,0"
+                        VerticalAlignment="Center"
+                        Foreground="Gray"
+                        Text="双击单元格可编辑数量和均价，改后点保存" />
+                </StackPanel>
+                <DataGrid
+                    x:Name="PositionsGrid"
+                    Grid.Row="1"
+                    AutoGenerateColumns="True"
+                    AutoGeneratingColumn="DataGrid_AutoGeneratingColumn"
+                    SelectionMode="Single" />
+            </Grid>
+        </TabItem>
+
+        <!--  Tab 3: 挂单管理  -->
+        <TabItem Header="挂单管理">
+            <Grid Margin="10">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <StackPanel Margin="0,0,0,10" Orientation="Horizontal">
+                    <Button
+                        Width="80"
+                        Click="RefreshOrders_Click"
+                        Content="刷新" />
+                    <Button
+                        Width="100"
+                        Margin="10,0,0,0"
+                        Click="ForceCancelOrder_Click"
+                        Content="强制撤单" />
+                </StackPanel>
+                <DataGrid
+                    x:Name="OrdersGrid"
+                    Grid.Row="1"
+                    AutoGenerateColumns="True"
+                    AutoGeneratingColumn="DataGrid_AutoGeneratingColumn"
+                    IsReadOnly="True"
+                    SelectionMode="Single" />
+            </Grid>
+        </TabItem>
+
+        <!--  Tab 4: 交易记录  -->
+        <TabItem Header="交易记录">
+            <Grid Margin="10">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <Button
+                    Width="80"
+                    Margin="0,0,0,10"
+                    HorizontalAlignment="Left"
+                    Click="RefreshTrades_Click"
+                    Content="刷新" />
+                <DataGrid
+                    x:Name="TradesGrid"
+                    Grid.Row="1"
+                    AutoGenerateColumns="True"
+                    AutoGeneratingColumn="DataGrid_AutoGeneratingColumn"
+                    IsReadOnly="True" />
+            </Grid>
+        </TabItem>
+
+        <!--  Tab 4: 系统设置  -->
+        <TabItem Header="系统设置">
+            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <StackPanel MaxWidth="550" Margin="20">
+                    <TextBlock
+                        Margin="0,0,0,20"
+                        FontSize="16"
+                        FontWeight="Bold"
+                        Text="系统设置" />
+
+                    <GroupBox
+                        Margin="0,0,0,15"
+                        Padding="10"
+                        Header="交易限制">
+                        <StackPanel>
+                            <TextBlock Margin="0,8,0,4" Text="最大挂单数" />
+                            <TextBox
+                                x:Name="MaxOrdersInput"
+                                Width="400"
+                                HorizontalAlignment="Left" />
+                            <TextBlock
+                                Margin="0,2,0,0"
+                                Foreground="Gray"
+                                Text="每个用户同时挂单上限，默认5" />
+                        </StackPanel>
+                    </GroupBox>
+
+                    <GroupBox
+                        Margin="0,0,0,15"
+                        Padding="10"
+                        Header="行情监控">
+                        <StackPanel>
+                            <TextBlock Margin="0,8,0,4" Text="轮询间隔(秒)" />
+                            <TextBox
+                                x:Name="PollingIntervalInput"
+                                Width="400"
+                                HorizontalAlignment="Left" />
+                            <TextBlock
+                                Margin="0,2,0,0"
+                                Foreground="Gray"
+                                Text="撮合引擎检查行情的间隔，默认3秒" />
+                        </StackPanel>
+                    </GroupBox>
+
+                    <GroupBox
+                        Margin="0,0,0,15"
+                        Padding="10"
+                        Header="访问控制">
+                        <StackPanel>
+                            <TextBlock Margin="0,8,0,4" Text="群组白名单" />
+                            <TextBox
+                                x:Name="GroupWhitelistInput"
+                                Width="400"
+                                HorizontalAlignment="Left" />
+                            <TextBlock
+                                Margin="0,2,0,12"
+                                Foreground="Gray"
+                                Text="逗号分隔群号，留空则不限制任何群" />
+
+                            <TextBlock Margin="0,8,0,4" Text="用户黑名单" />
+                            <TextBox
+                                x:Name="UserBlacklistInput"
+                                Width="400"
+                                HorizontalAlignment="Left" />
+                            <TextBlock
+                                Margin="0,2,0,0"
+                                Foreground="Gray"
+                                Text="逗号分隔QQ号，黑名单用户将被拒绝所有操作" />
+                        </StackPanel>
+                    </GroupBox>
+
+                    <Button
+                        Width="100"
+                        Height="32"
+                        Margin="0,10,0,0"
+                        Click="SaveSettings_Click"
+                        Content="保存设置" />
+                </StackPanel>
+            </ScrollViewer>
+        </TabItem>
+    </TabControl>
+</Window>

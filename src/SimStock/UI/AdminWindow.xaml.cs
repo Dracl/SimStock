@@ -1,0 +1,424 @@
+using SimStock.Models;
+using System.Globalization;
+using System.Windows;
+using System.Windows.Data;
+
+namespace SimStock;
+
+public class ValueConverter(Func<object, string> formatter) : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture) => formatter(value);
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) => throw new NotSupportedException();
+}
+
+public class CollectionCountConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        if (value is System.Collections.ICollection col)
+        {
+            return col.Count.ToString();
+        }
+
+        return "0";
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) => throw new NotSupportedException();
+}
+
+public partial class AdminWindow : Window
+{
+    private static readonly Dictionary<string, string> ColumnNames = new()
+    {
+        // Account
+        ["Id"] = "ID",
+        ["QQ"] = "QQ号",
+        ["GroupId"] = "群号",
+        ["Balance"] = "可用余额",
+        ["TotalAsset"] = "总资产",
+        ["CreatedAt"] = "注册时间",
+        ["UpdatedAt"] = "更新时间",
+        ["Positions"] = "持仓",
+        ["Orders"] = "订单",
+        // Order
+        ["AccountId"] = "账户ID",
+        ["StockCode"] = "股票代码",
+        ["OrderType"] = "订单类型",
+        ["Quantity"] = "数量",
+        ["Price"] = "价格",
+        ["FilledQuantity"] = "已成交",
+        ["Status"] = "状态",
+        // TradeRecord
+        ["OrderId"] = "订单号",
+        ["TradeType"] = "方向",
+        ["Amount"] = "金额",
+        ["TradedAt"] = "成交时间",
+        // Shared
+        ["AvgCost"] = "均价",
+        ["Value"] = "值",
+        ["Key"] = "键",
+    };
+
+    private static readonly Dictionary<string, Func<object, string>> ColumnFormatters = new()
+    {
+        ["OrderType"] = v => (int)v switch { 0 => "市价买", 1 => "限价买", 2 => "市价卖", 3 => "限价卖", _ => v.ToString()! },
+        ["Status"] = v => (int)v switch { 0 => "挂单中", 1 => "部分成交", 2 => "已成交", 3 => "已撤销", _ => v.ToString()! },
+        ["TradeType"] = v => (int)v == 0 ? "买入" : "卖出",
+    };
+
+    public AdminWindow()
+    {
+        InitializeComponent();
+        Loaded += async (s, e) => await LoadAllData();
+    }
+
+    private static readonly HashSet<string> ReadOnlyColumns = ["Id", "AccountId", "UpdatedAt", "CreatedAt", "TradedAt"];
+
+    private void DataGrid_AutoGeneratingColumn(object sender, System.Windows.Controls.DataGridAutoGeneratingColumnEventArgs e)
+    {
+        // 保护列只读（按属性名判断，不受翻译影响）
+        if (ReadOnlyColumns.Contains(e.PropertyName))
+        {
+            e.Column.IsReadOnly = true;
+        }
+
+        if (ColumnNames.TryGetValue(e.PropertyName, out var chineseName))
+        {
+            e.Column.Header = chineseName;
+        }
+
+        if (e.PropertyType == typeof(DateTime))
+        {
+            ((System.Windows.Controls.DataGridTextColumn)e.Column).Binding.StringFormat = "yyyy-MM-dd HH:mm:ss";
+        }
+
+        // 导航属性显示集合数量，而不是 "(Collection)"
+        if (e.PropertyType.IsGenericType && e.PropertyType.GetGenericTypeDefinition() == typeof(List<>))
+        {
+            var originalBinding = ((System.Windows.Controls.DataGridTextColumn)e.Column).Binding as System.Windows.Data.Binding;
+            if (originalBinding != null)
+            {
+                originalBinding.Converter = new CollectionCountConverter();
+            }
+        }
+
+        if (ColumnFormatters.TryGetValue(e.PropertyName, out var formatter))
+        {
+            var originalBinding = ((System.Windows.Controls.DataGridTextColumn)e.Column).Binding as System.Windows.Data.Binding;
+            if (originalBinding != null)
+            {
+                originalBinding.Converter = new ValueConverter(formatter);
+            }
+        }
+    }
+
+    private async Task LoadAllData()
+    {
+        await LoadUsers();
+        await LoadPositions();
+        await LoadOrders();
+        await LoadTrades();
+        LoadSettings();
+    }
+
+    private async Task LoadUsers()
+    {
+        try
+        {
+            var users = await Entry.Db!.Queryable<Account>()
+                .OrderBy(a => a.Id, SqlSugar.OrderByType.Desc).Take(200).ToListAsync();
+
+            // 用数据库直接查持仓数和订单数，比导航属性可靠
+            var accountIds = users.Select(u => u.Id).ToList();
+            var posCounts = await Entry.Db!.Queryable<Position>()
+                .Where(p => accountIds.Contains(p.AccountId) && p.Quantity > 0)
+                .GroupBy(p => p.AccountId)
+                .Select(p => new { p.AccountId, Count = SqlSugar.SqlFunc.AggregateCount(p.Id) })
+                .ToListAsync();
+            var orderCounts = await Entry.Db!.Queryable<Order>()
+                .Where(o => accountIds.Contains(o.AccountId) && o.Status == 0)
+                .GroupBy(o => o.AccountId)
+                .Select(o => new { o.AccountId, Count = SqlSugar.SqlFunc.AggregateCount(o.Id) })
+                .ToListAsync();
+
+            var posDict = posCounts.ToDictionary(x => x.AccountId, x => x.Count);
+            var ordDict = orderCounts.ToDictionary(x => x.AccountId, x => x.Count);
+
+            foreach (var user in users)
+            {
+                user.Positions = new List<Position>(new Position[posDict.GetValueOrDefault(user.Id)]);
+                user.Orders = new List<Order>(new Order[ordDict.GetValueOrDefault(user.Id)]);
+            }
+
+            UsersGrid.ItemsSource = users;
+        }
+        catch (Exception ex) { MessageBox.Show($"加载用户数据失败: {ex.Message}"); }
+    }
+
+    private async Task LoadPositions()
+    {
+        try
+        {
+            var positions = await Entry.Db!.Queryable<Position>()
+                .Where(p => p.Quantity > 0)
+                .OrderBy(p => p.AccountId)
+                .ToListAsync();
+            PositionsGrid.ItemsSource = positions;
+        }
+        catch (Exception ex) { MessageBox.Show($"加载持仓数据失败: {ex.Message}"); }
+    }
+
+    private async Task LoadOrders()
+    {
+        try
+        {
+            var orders = await Entry.Db!.Queryable<Order>()
+                .OrderBy(o => o.Id, SqlSugar.OrderByType.Desc).Take(200).ToListAsync();
+            OrdersGrid.ItemsSource = orders;
+        }
+        catch (Exception ex) { MessageBox.Show($"加载挂单数据失败: {ex.Message}"); }
+    }
+
+    private async Task LoadTrades()
+    {
+        try
+        {
+            var trades = await Entry.Db!.Queryable<TradeRecord>()
+                .OrderBy(t => t.Id, SqlSugar.OrderByType.Desc).Take(200).ToListAsync();
+            TradesGrid.ItemsSource = trades;
+        }
+        catch (Exception ex) { MessageBox.Show($"加载交易记录失败: {ex.Message}"); }
+    }
+
+    private void LoadSettings()
+    {
+        MaxOrdersInput.Text = Entry.Config.MaxPendingOrdersPerUser.ToString();
+        PollingIntervalInput.Text = Entry.Config.QuotePollingIntervalSec.ToString();
+        GroupWhitelistInput.Text = string.Join(", ", Entry.Config.GroupWhitelist);
+        UserBlacklistInput.Text = string.Join(", ", Entry.Config.UserBlacklist);
+    }
+
+    private async void RefreshUsers_Click(object sender, RoutedEventArgs e) => await LoadUsers();
+
+    private async void RefreshPositions_Click(object sender, RoutedEventArgs e) => await LoadPositions();
+
+    private async void DeletePosition_Click(object sender, RoutedEventArgs e)
+    {
+        if (PositionsGrid.SelectedItem is not Position pos)
+        {
+            return;
+        }
+
+        var result = MessageBox.Show(
+            $"确认删除持仓？\n股票: {pos.StockCode}\n数量: {pos.Quantity}\n均价: {pos.AvgCost:F2}",
+            "确认删除", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+        if (result != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        try
+        {
+            await Entry.Db!.Deleteable(pos).ExecuteCommandAsync();
+            MessageBox.Show("持仓已删除");
+            await LoadPositions();
+        }
+        catch (Exception ex) { MessageBox.Show($"删除失败: {ex.Message}"); }
+    }
+
+    private async void SavePositions_Click(object sender, RoutedEventArgs e)
+    {
+        if (PositionsGrid.ItemsSource is not List<Position> positions)
+        {
+            return;
+        }
+
+        var modified = positions.Where(p =>
+        {
+            // 找出有变化的持仓：数量变更或均价变更
+            var original = Entry.Db!.Queryable<Position>().First(pp => pp.Id == p.Id);
+            return original != null && (original.Quantity != p.Quantity || original.AvgCost != p.AvgCost);
+        }).ToList();
+
+        if (modified.Count == 0)
+        {
+            MessageBox.Show("没有需要保存的修改");
+            return;
+        }
+
+        var result = MessageBox.Show($"确认保存 {modified.Count} 条持仓修改？", "确认", MessageBoxButton.YesNo, MessageBoxImage.Question);
+        if (result != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        try
+        {
+            foreach (var pos in modified)
+            {
+                pos.UpdatedAt = DateTime.Now;
+                if (pos.Quantity <= 0)
+                {
+                    await Entry.Db!.Deleteable(pos).ExecuteCommandAsync();
+                }
+                else
+                {
+                    await Entry.Db!.Updateable(pos).ExecuteCommandAsync();
+                }
+            }
+
+            MessageBox.Show("保存成功");
+            await LoadPositions();
+        }
+        catch (Exception ex) { MessageBox.Show($"保存失败: {ex.Message}"); }
+    }
+
+    private async void RefreshOrders_Click(object sender, RoutedEventArgs e) => await LoadOrders();
+
+    private async void RefreshTrades_Click(object sender, RoutedEventArgs e) => await LoadTrades();
+
+    private async void ResetUser_Click(object sender, RoutedEventArgs e)
+    {
+        if (UsersGrid.SelectedItem is not Account account)
+        {
+            return;
+        }
+
+        var result = MessageBox.Show(
+            $"确认重置 QQ={account.QQ} 群={account.GroupId} 的账户？\n所有数据将被清空且不可恢复。",
+            "确认操作", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+        if (result != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        try
+        {
+            await AccountService.ResetAccountAsync(account.QQ, account.GroupId);
+            MessageBox.Show("账户已重置");
+            await LoadUsers();
+        }
+        catch (Exception ex) { MessageBox.Show($"操作失败: {ex.Message}"); }
+    }
+
+    private async void ForceCancelOrder_Click(object sender, RoutedEventArgs e)
+    {
+        if (OrdersGrid.SelectedItem is not Order order)
+        {
+            return;
+        }
+
+        if (order.Status != 0)
+        {
+            MessageBox.Show("该订单已成交或已撤销");
+            return;
+        }
+
+        var result = MessageBox.Show(
+            $"确认强制撤销订单 {order.Id}？\n股票: {order.StockCode} 数量: {order.Quantity}",
+            "确认操作", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+        if (result != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        try
+        {
+            order.Status = 3;
+            order.UpdatedAt = DateTime.Now;
+            await Entry.Db!.Updateable(order).ExecuteCommandAsync();
+            MessageBox.Show("订单已撤销");
+            await LoadOrders();
+        }
+        catch (Exception ex) { MessageBox.Show($"操作失败: {ex.Message}"); }
+    }
+
+    private async void SearchUser_Click(object sender, RoutedEventArgs e)
+    {
+        if (long.TryParse(UserSearchBox.Text.Trim(), out var qq))
+        {
+            var users = await Entry.Db!.Queryable<Account>()
+                .Where(a => a.QQ == qq)
+                .OrderBy(a => a.Id, SqlSugar.OrderByType.Desc)
+                .ToListAsync();
+
+            var accountIds = users.Select(u => u.Id).ToList();
+            if (accountIds.Count > 0)
+            {
+                var posCounts = await Entry.Db!.Queryable<Position>()
+                    .Where(p => accountIds.Contains(p.AccountId) && p.Quantity > 0)
+                    .GroupBy(p => p.AccountId)
+                    .Select(p => new { p.AccountId, Count = SqlSugar.SqlFunc.AggregateCount(p.Id) })
+                    .ToListAsync();
+                var orderCounts = await Entry.Db!.Queryable<Order>()
+                    .Where(o => accountIds.Contains(o.AccountId) && o.Status == 0)
+                    .GroupBy(o => o.AccountId)
+                    .Select(o => new { o.AccountId, Count = SqlSugar.SqlFunc.AggregateCount(o.Id) })
+                    .ToListAsync();
+
+                var posDict = posCounts.ToDictionary(x => x.AccountId, x => x.Count);
+                var ordDict = orderCounts.ToDictionary(x => x.AccountId, x => x.Count);
+
+                foreach (var user in users)
+                {
+                    user.Positions = new List<Position>(new Position[posDict.GetValueOrDefault(user.Id)]);
+                    user.Orders = new List<Order>(new Order[ordDict.GetValueOrDefault(user.Id)]);
+                }
+            }
+
+            UsersGrid.ItemsSource = users;
+        }
+        else
+        {
+            await LoadUsers();
+        }
+    }
+
+    private async void SaveSettings_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var db = Entry.Db!;
+
+            if (int.TryParse(MaxOrdersInput.Text.Trim(), out var maxOrders) && maxOrders > 0)
+            {
+                await Entry.Config.SetAsync(db, "MaxPendingOrdersPerUser", maxOrders.ToString());
+            }
+
+            if (int.TryParse(PollingIntervalInput.Text.Trim(), out var interval) && interval >= 1)
+            {
+                await Entry.Config.SetAsync(db, "QuotePollingIntervalSec", interval.ToString());
+            }
+
+            var whitelist = GroupWhitelistInput.Text.Trim();
+            if (!string.IsNullOrEmpty(whitelist))
+            {
+                // 验证格式
+                var ids = whitelist.Split(',').Select(s => s.Trim()).Where(s => long.TryParse(s, out _));
+                await Entry.Config.SetAsync(db, "GroupWhitelist", whitelist);
+            }
+            else
+            {
+                await Entry.Config.SetAsync(db, "GroupWhitelist", "");
+            }
+
+            var blacklist = UserBlacklistInput.Text.Trim();
+            if (!string.IsNullOrEmpty(blacklist))
+            {
+                await Entry.Config.SetAsync(db, "UserBlacklist", blacklist);
+            }
+            else
+            {
+                await Entry.Config.SetAsync(db, "UserBlacklist", "");
+            }
+
+            MessageBox.Show("设置已保存", "提示", MessageBoxButton.OK, MessageBoxImage.Information);
+            LoadSettings();
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"保存失败: {ex.Message}", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+}
