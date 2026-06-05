@@ -464,6 +464,11 @@ public class StockCommands : CommandHandlerBase
         {
             return EventHandleResult.Block;
         }
+        var (b, err2) = SafetyChecker.CheckUserBlacklist(e.FromQQ.Id);
+        if (!b)
+        {
+            return EventHandleResult.Block;
+        }
 
         var leaderboard = await AccountService.GetLeaderboardAsync(e.FromGroup.Id, 20);
         if (leaderboard.Count == 0)
@@ -532,6 +537,18 @@ public class StockCommands : CommandHandlerBase
     [Command(MatchMode.FullMatch, "/股票帮助")]
     public async Task<EventHandleResult> CmdHelp(GroupMessageContext e)
     {
+        var (w, err) = SafetyChecker.CheckGroupWhitelist(e.FromGroup.Id);
+        if (!w)
+        {
+            return EventHandleResult.Block;
+        }
+
+        var (b, err2) = SafetyChecker.CheckUserBlacklist(e.FromQQ.Id);
+        if (!b)
+        {
+            return EventHandleResult.Block;
+        }
+
         var helpText = """
             🌿 === 水银韭菜机 帮助 ===
 
