@@ -1,6 +1,4 @@
 <Solution>
-  <Folder Name="/src/">
-    <Project Path="src/SimStock/SimStock.csproj" />
-  </Folder>
+  <Project Path="SimStock/SimStock.csproj" />
   <Project Path="TdxProtocol/TdxProtocol.csproj" />
 </Solution>
