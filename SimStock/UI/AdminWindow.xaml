@@ -135,6 +135,64 @@
             </Grid>
         </TabItem>
 
+        <!--  Tab 5: 插件管理员  -->
+        <TabItem x:Name="AdminTab" Header="插件管理员">
+            <Grid Margin="10">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <!--  群选择  -->
+                <StackPanel
+                    Grid.Row="0"
+                    Margin="0,0,0,15"
+                    Orientation="Horizontal">
+                    <TextBlock
+                        Margin="0,0,10,0"
+                        VerticalAlignment="Center"
+                        Text="选择群:" />
+                    <ComboBox
+                        x:Name="GroupSelector"
+                        Width="250"
+                        SelectionChanged="GroupSelector_SelectionChanged" />
+                    <Button
+                        Width="60"
+                        Margin="10,0,0,0"
+                        Click="RefreshGroupList_Click"
+                        Content="刷新" />
+                </StackPanel>
+                <!--  当前管理员列表 + 添加  -->
+                <GroupBox
+                    Grid.Row="1"
+                    Padding="10"
+                    Header="管理员列表">
+                    <DockPanel>
+                        <StackPanel
+                            DockPanel.Dock="Bottom"
+                            Margin="0,10,0,0"
+                            Orientation="Horizontal">
+                            <TextBlock
+                                Margin="0,0,10,0"
+                                VerticalAlignment="Center"
+                                Text="QQ号:" />
+                            <TextBox x:Name="NewAdminQQInput" Width="200" />
+                            <Button
+                                Width="60"
+                                Margin="10,0,0,0"
+                                Click="AddAdmin_Click"
+                                Content="添加" />
+                            <Button
+                                Width="60"
+                                Margin="10,0,0,0"
+                                Click="RemoveAdmin_Click"
+                                Content="移除选中" />
+                        </StackPanel>
+                        <ListBox x:Name="AdminListBox" />
+                    </DockPanel>
+                </GroupBox>
+            </Grid>
+        </TabItem>
+
         <!--  Tab 4: 系统设置  -->
         <TabItem Header="系统设置">
             <ScrollViewer VerticalScrollBarVisibility="Auto">

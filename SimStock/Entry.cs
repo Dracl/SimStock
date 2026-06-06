@@ -51,7 +51,8 @@ public class Entry : PluginBase
             typeof(Models.Position),
             typeof(Models.Order),
             typeof(Models.TradeRecord),
-            typeof(Models.Setting));
+            typeof(Models.Setting),
+            typeof(Models.GroupAdmin));
 
         // 加载配置
         Config = new ConfigService();

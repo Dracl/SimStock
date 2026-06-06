@@ -189,6 +189,102 @@ public class StockCommands : CommandHandlerBase
         return EventHandleResult.Block;
     }
 
+    // ==================== 管理员管理 ====================
+
+    [Command(MatchMode.Regex, @"^/股票管理\s+添加\s+(?<qq>\d{5,12})$")]
+    public async Task<EventHandleResult> CmdAdminAdd(GroupMessageContext e, long qq)
+    {
+        var (w, err) = SafetyChecker.CheckGroupWhitelist(e.FromGroup.Id);
+        if (!w) { return EventHandleResult.Block; }
+
+        var (b, err2) = SafetyChecker.CheckUserBlacklist(e.FromQQ.Id);
+        if (!b) { return EventHandleResult.Block; }
+
+        if (!await AdminService.IsAdminAsync(e.FromGroup.Id, e.FromQQ.Id))
+        {
+            await e.SendMessageAsync("仅本群插件管理员可使用此命令");
+            return EventHandleResult.Block;
+        }
+
+        var (success, err3) = await AdminService.AddAdminAsync(e.FromGroup.Id, qq);
+        if (!success)
+        {
+            await e.SendMessageAsync(err3!);
+            return EventHandleResult.Block;
+        }
+
+        await e.SendMessageAsync(new MessageBuilder()
+            .At(e.FromQQ.Id)
+            .Text($" 已将 QQ({qq}) 设为本群插件管理员")
+            .Build());
+        return EventHandleResult.Block;
+    }
+
+    [Command(MatchMode.Regex, @"^/股票管理\s+移除\s+(?<qq>\d{5,12})$")]
+    public async Task<EventHandleResult> CmdAdminRemove(GroupMessageContext e, long qq)
+    {
+        var (w, err) = SafetyChecker.CheckGroupWhitelist(e.FromGroup.Id);
+        if (!w) { return EventHandleResult.Block; }
+
+        var (b, err2) = SafetyChecker.CheckUserBlacklist(e.FromQQ.Id);
+        if (!b) { return EventHandleResult.Block; }
+
+        if (!await AdminService.IsAdminAsync(e.FromGroup.Id, e.FromQQ.Id))
+        {
+            await e.SendMessageAsync("仅本群插件管理员可使用此命令");
+            return EventHandleResult.Block;
+        }
+
+        var (success, err3) = await AdminService.RemoveAdminAsync(e.FromGroup.Id, qq);
+        if (!success)
+        {
+            await e.SendMessageAsync(err3!);
+            return EventHandleResult.Block;
+        }
+
+        await e.SendMessageAsync(new MessageBuilder()
+            .At(e.FromQQ.Id)
+            .Text($" 已移除 QQ({qq}) 的本群插件管理员权限")
+            .Build());
+        return EventHandleResult.Block;
+    }
+
+    [Command(MatchMode.FullMatch, "/股票管理 列表")]
+    public async Task<EventHandleResult> CmdAdminList(GroupMessageContext e)
+    {
+        var (w, err) = SafetyChecker.CheckGroupWhitelist(e.FromGroup.Id);
+        if (!w) { return EventHandleResult.Block; }
+
+        var (b, err2) = SafetyChecker.CheckUserBlacklist(e.FromQQ.Id);
+        if (!b) { return EventHandleResult.Block; }
+
+        var admins = await AdminService.GetAdminsAsync(e.FromGroup.Id);
+        if (admins.Count == 0)
+        {
+            await e.SendMessageAsync("本群尚未配置插件管理员。请在管理面板中设定。");
+            return EventHandleResult.Block;
+        }
+
+        var names = new List<string>();
+        foreach (var admin in admins)
+        {
+            try
+            {
+                var member = Entry.Api.GroupApi.GetGroupMemberInfo(e.FromGroup.Id, admin.QQ);
+                var name = member != null
+                    ? (!string.IsNullOrEmpty(member.Card) ? member.Card
+                        : !string.IsNullOrEmpty(member.Nick) ? member.Nick
+                        : admin.QQ.ToString())
+                    : admin.QQ.ToString();
+                names.Add($"  {name} (QQ:{admin.QQ})");
+            }
+            catch { names.Add($"  QQ:{admin.QQ}"); }
+        }
+
+        await e.SendMessageAsync($"本群插件管理员:\n{string.Join("\n", names)}");
+        return EventHandleResult.Block;
+    }
+
     // ==================== 行情查询 ====================
 
     [Command(MatchMode.Regex, @"^/股价\s+(?<code>\w{2,8})$")]
@@ -558,6 +654,11 @@ public class StockCommands : CommandHandlerBase
             /股票入金 金额     增加账户资金
             /股票出金 金额     取出账户资金
             /股票重置          清空所有数据重新开始
+
+            🔧 【管理员命令】
+            /股票管理 添加 QQ  添加插件管理员
+            /股票管理 移除 QQ  移除插件管理员
+            /股票管理 列表     查看本群管理员
 
             📈 【行情查询】
             /股价 代码         查询实时股价

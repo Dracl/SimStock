@@ -1,3 +1,4 @@
+using Another_Mirai_Native.Abstractions.Models;
 using SimStock.Models;
 using System.Globalization;
 using System.Windows;
@@ -120,6 +121,7 @@ public partial class AdminWindow : Window
         await LoadOrders();
         await LoadTrades();
         LoadSettings();
+        await LoadGroupList();
     }
 
     private async Task LoadUsers()
@@ -435,4 +437,145 @@ public partial class AdminWindow : Window
             MessageBox.Show($"保存失败: {ex.Message}", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
+
+    // ==================== 插件管理员 Tab ====================
+
+    private async void RefreshGroupList_Click(object sender, RoutedEventArgs e)
+    {
+        await LoadGroupList();
+    }
+
+    private async Task LoadGroupList()
+    {
+        try
+        {
+            var groups = await Task.Run(() => Entry.Api.GroupApi.GetGroupList());
+            GroupSelector.ItemsSource = null;
+            GroupSelector.DisplayMemberPath = "Name";
+            GroupSelector.ItemsSource = groups;
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"加载群列表失败: {ex.Message}");
+        }
+    }
+
+    private async void GroupSelector_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        await LoadAdminsForSelectedGroup();
+    }
+
+    private async Task LoadAdminsForSelectedGroup()
+    {
+        if (GroupSelector.SelectedItem == null)
+        {
+            return;
+        }
+
+        var groupInfo = (GroupInfo)GroupSelector.SelectedItem;
+        var groupId = groupInfo.Group;
+
+        try
+        {
+            var admins = await AdminService.GetAdminsAsync(groupId);
+            var displayItems = new List<string>();
+            foreach (var admin in admins)
+            {
+                try
+                {
+                    var member = Entry.Api.GroupApi.GetGroupMemberInfo(groupId, admin.QQ);
+                    var name = member != null
+                        ? (!string.IsNullOrEmpty(member.Card) ? member.Card
+                            : !string.IsNullOrEmpty(member.Nick) ? member.Nick
+                            : admin.QQ.ToString())
+                        : admin.QQ.ToString();
+                    displayItems.Add($"{name} (QQ:{admin.QQ})");
+                }
+                catch { displayItems.Add($"QQ:{admin.QQ}"); }
+            }
+
+            AdminListBox.ItemsSource = displayItems;
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"加载管理员列表失败: {ex.Message}");
+        }
+    }
+
+    private async void AddAdmin_Click(object sender, RoutedEventArgs e)
+    {
+        if (GroupSelector.SelectedItem == null)
+        {
+            MessageBox.Show("请先选择一个群");
+            return;
+        }
+
+        if (!long.TryParse(NewAdminQQInput.Text.Trim(), out var qq) || qq <= 0)
+        {
+            MessageBox.Show("请输入有效的QQ号");
+            return;
+        }
+
+        var groupInfo = (GroupInfo)GroupSelector.SelectedItem;
+        var groupId = groupInfo.Group;
+
+        try
+        {
+            var (success, error) = await AdminService.AddAdminAsync(groupId, qq);
+            if (!success)
+            {
+                MessageBox.Show(error!);
+                return;
+            }
+
+            NewAdminQQInput.Clear();
+            await LoadAdminsForSelectedGroup();
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"添加失败: {ex.Message}");
+        }
+    }
+
+    private async void RemoveAdmin_Click(object sender, RoutedEventArgs e)
+    {
+        if (GroupSelector.SelectedItem == null)
+        {
+            MessageBox.Show("请先选择一个群");
+            return;
+        }
+
+        if (AdminListBox.SelectedItem is not string selectedText)
+        {
+            MessageBox.Show("请先在列表中选择要移除的管理员");
+            return;
+        }
+
+        // 从显示文本中提取QQ号: "昵称 (QQ:12345)" 或 "QQ:12345"
+        var match = System.Text.RegularExpressions.Regex.Match(selectedText, @"QQ:(\d+)");
+        if (!match.Success || !long.TryParse(match.Groups[1].Value, out var qq))
+        {
+            return;
+        }
+
+        var groupInfo = (GroupInfo)GroupSelector.SelectedItem;
+        var groupId = groupInfo.Group;
+
+        try
+        {
+            var (success, error) = await AdminService.RemoveAdminAsync(groupId, qq);
+            if (!success)
+            {
+                MessageBox.Show(error!);
+                return;
+            }
+
+            await LoadAdminsForSelectedGroup();
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"移除失败: {ex.Message}");
+        }
+    }
+
 }
