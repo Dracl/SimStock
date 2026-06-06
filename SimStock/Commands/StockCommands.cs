@@ -97,33 +97,32 @@ public class StockCommands : CommandHandlerBase
         return EventHandleResult.Block;
     }
 
-    [Command(MatchMode.Regex, @"^/股票入金\s+(?<amount>\d+(\.\d+)?)$")]
-    public async Task<EventHandleResult> CmdDeposit(GroupMessageContext e, decimal amount)
+    [Command(MatchMode.Regex, @"^/股票入金\s+(?<qq>\d{5,12})\s+(?<amount>\d+(\.\d+)?)$")]
+    public async Task<EventHandleResult> CmdDeposit(GroupMessageContext e, long qq, decimal amount)
     {
         amount = Math.Round(amount, 2);
         var (w, err) = SafetyChecker.CheckGroupWhitelist(e.FromGroup.Id);
-        if (!w)
-        {
-            return EventHandleResult.Block;
-        }
-
+        if (!w) { return EventHandleResult.Block; }
         var (b, err2) = SafetyChecker.CheckUserBlacklist(e.FromQQ.Id);
-        if (!b)
+        if (!b) { return EventHandleResult.Block; }
+
+        if (!await AdminService.IsAdminAsync(e.FromGroup.Id, e.FromQQ.Id))
         {
+            await e.SendMessageAsync("仅本群插件管理员可执行此操作");
             return EventHandleResult.Block;
         }
 
-        var (success, err3) = await AccountService.DepositAsync(e.FromQQ.Id, e.FromGroup.Id, amount);
+        var (success, err3) = await AccountService.DepositAsync(qq, e.FromGroup.Id, amount);
         if (!success)
         {
             await e.SendMessageAsync(err3!);
             return EventHandleResult.Block;
         }
 
-        var account = await AccountService.GetAccountAsync(e.FromQQ.Id, e.FromGroup.Id);
+        var account = await AccountService.GetAccountAsync(qq, e.FromGroup.Id);
         await e.SendMessageAsync(new MessageBuilder()
             .At(e.FromQQ.Id)
-            .Text($" 💵 入金 {amount:N2} 元成功！当前余额: {account!.Balance:N2} 元")
+            .Text($" 💵 已向 QQ({qq}) 入金 {amount:N2} 元，当前余额: {account!.Balance:N2} 元")
             .Build());
         return EventHandleResult.Block;
     }
@@ -133,16 +132,9 @@ public class StockCommands : CommandHandlerBase
     {
         amount = Math.Round(amount, 2);
         var (w, err) = SafetyChecker.CheckGroupWhitelist(e.FromGroup.Id);
-        if (!w)
-        {
-            return EventHandleResult.Block;
-        }
-
+        if (!w) { return EventHandleResult.Block; }
         var (b, err2) = SafetyChecker.CheckUserBlacklist(e.FromQQ.Id);
-        if (!b)
-        {
-            return EventHandleResult.Block;
-        }
+        if (!b) { return EventHandleResult.Block; }
 
         var (success, err3) = await AccountService.WithdrawAsync(e.FromQQ.Id, e.FromGroup.Id, amount);
         if (!success)
@@ -159,32 +151,31 @@ public class StockCommands : CommandHandlerBase
         return EventHandleResult.Block;
     }
 
-    [Command(MatchMode.FullMatch, "/股票重置")]
-    public async Task<EventHandleResult> CmdReset(GroupMessageContext e)
+    [Command(MatchMode.Regex, @"^/股票重置\s+(?<qq>\d{5,12})$")]
+    public async Task<EventHandleResult> CmdReset(GroupMessageContext e, long qq)
     {
         var (w, err) = SafetyChecker.CheckGroupWhitelist(e.FromGroup.Id);
-        if (!w)
-        {
-            return EventHandleResult.Block;
-        }
-
+        if (!w) { return EventHandleResult.Block; }
         var (b, err2) = SafetyChecker.CheckUserBlacklist(e.FromQQ.Id);
-        if (!b)
+        if (!b) { return EventHandleResult.Block; }
+
+        if (!await AdminService.IsAdminAsync(e.FromGroup.Id, e.FromQQ.Id))
         {
+            await e.SendMessageAsync("仅本群插件管理员可执行此操作");
             return EventHandleResult.Block;
         }
 
-        var account = await AccountService.GetAccountAsync(e.FromQQ.Id, e.FromGroup.Id);
+        var account = await AccountService.GetAccountAsync(qq, e.FromGroup.Id);
         if (account == null)
         {
-            await e.SendMessageAsync("您还没有交易账户");
+            await e.SendMessageAsync($"QQ({qq}) 在本群没有交易账户");
             return EventHandleResult.Block;
         }
 
-        await AccountService.ResetAccountAsync(e.FromQQ.Id, e.FromGroup.Id);
+        await AccountService.ResetAccountAsync(qq, e.FromGroup.Id);
         await e.SendMessageAsync(new MessageBuilder()
             .At(e.FromQQ.Id)
-            .Text(" 🔄 账户已重置，所有数据已清空。使用 /股票注册 重新开始")
+            .Text($" 🔄 QQ({qq}) 的账户已重置，所有数据已清空")
             .Build());
         return EventHandleResult.Block;
     }
@@ -654,11 +645,11 @@ public class StockCommands : CommandHandlerBase
             💰 【账户管理】
             /股票注册          创建账户，获得初始资金
             /股票账户          查看余额、持仓、挂单
-            /股票入金 金额     增加账户资金
             /股票出金 金额     取出账户资金
-            /股票重置          清空所有数据重新开始
 
             🔧 【管理员命令】
+            /股票入金 QQ 金额  为指定用户增加资金
+            /股票重置 QQ       重置指定用户的账户
             /股票管理 添加 QQ  添加插件管理员
             /股票管理 移除 QQ  移除插件管理员
             /股票管理 列表     查看本群管理员
