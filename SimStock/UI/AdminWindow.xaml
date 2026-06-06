@@ -281,6 +281,26 @@
                         </StackPanel>
                     </GroupBox>
 
+                    <GroupBox
+                        Margin="0,0,0,15"
+                        Padding="10"
+                        Header="帮助文本">
+                        <StackPanel>
+                            <TextBox
+                                x:Name="CustomHelpTextInput"
+                                Width="400"
+                                Height="200"
+                                HorizontalAlignment="Left"
+                                AcceptsReturn="True"
+                                VerticalScrollBarVisibility="Auto"
+                                TextWrapping="Wrap" />
+                            <TextBlock
+                                Margin="0,2,0,0"
+                                Foreground="Gray"
+                                Text="自定义 /股票帮助 返回文本，留空则使用默认帮助" />
+                        </StackPanel>
+                    </GroupBox>
+
                     <Button
                         Width="100"
                         Height="32"

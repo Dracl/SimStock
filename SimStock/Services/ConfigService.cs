@@ -11,6 +11,8 @@ public class ConfigService
 
     public decimal InitialCapital { get; set; } = 1_000_000m;
 
+    public string CustomHelpText { get; set; } = "";
+
     public HashSet<long> GroupWhitelist { get; set; } = [];
 
     public HashSet<long> UserBlacklist { get; set; } = [];
@@ -33,6 +35,15 @@ public class ConfigService
         if (dict.TryGetValue("InitialCapital", out var capital) && decimal.TryParse(capital, out var v3) && v3 > 0)
         {
             InitialCapital = v3;
+        }
+
+        if (dict.TryGetValue("CustomHelpText", out var help) && !string.IsNullOrWhiteSpace(help))
+        {
+            CustomHelpText = help;
+        }
+        else
+        {
+            CustomHelpText = "";
         }
 
         if (dict.TryGetValue("GroupWhitelist", out var wl) && !string.IsNullOrWhiteSpace(wl))

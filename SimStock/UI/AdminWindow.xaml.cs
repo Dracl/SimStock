@@ -200,6 +200,7 @@ public partial class AdminWindow : Window
         InitialCapitalInput.Text = Entry.Config.InitialCapital.ToString("F0");
         GroupWhitelistInput.Text = string.Join(", ", Entry.Config.GroupWhitelist);
         UserBlacklistInput.Text = string.Join(", ", Entry.Config.UserBlacklist);
+        CustomHelpTextInput.Text = Entry.Config.CustomHelpText;
     }
 
     private async void RefreshUsers_Click(object sender, RoutedEventArgs e) => await LoadUsers();
@@ -434,6 +435,8 @@ public partial class AdminWindow : Window
             {
                 await Entry.Config.SetAsync(db, "UserBlacklist", "");
             }
+
+            await Entry.Config.SetAsync(db, "CustomHelpText", CustomHelpTextInput.Text.Trim());
 
             MessageBox.Show("设置已保存", "提示", MessageBoxButton.OK, MessageBoxImage.Information);
             LoadSettings();

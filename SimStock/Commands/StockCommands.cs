@@ -645,7 +645,10 @@ public class StockCommands : CommandHandlerBase
             return EventHandleResult.Block;
         }
 
-        var helpText = """
+        var custom = Entry.Config.CustomHelpText;
+        var helpText = !string.IsNullOrWhiteSpace(custom)
+            ? custom
+            : """
             🌿 === 水银韭菜机 帮助 ===
 
             💰 【账户管理】
