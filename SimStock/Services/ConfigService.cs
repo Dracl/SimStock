@@ -1,5 +1,7 @@
 using SimStock.Models;
 using SqlSugar;
+using System.Text.Json;
+using System.Text.RegularExpressions;
 
 namespace SimStock;
 
@@ -16,6 +18,64 @@ public class ConfigService
     public HashSet<long> GroupWhitelist { get; set; } = [];
 
     public HashSet<long> UserBlacklist { get; set; } = [];
+
+    /// <summary>自定义触发词字典: 命令名 → 触发词 (不含正则后缀)</summary>
+    public Dictionary<string, string> Triggers { get; set; } = [];
+
+    /// <summary>所有命令的默认触发词</summary>
+    public static readonly Dictionary<string, string> DefaultTriggers = new()
+    {
+        ["Register"] = "/股票注册",
+        ["Account"] = "/股票账户",
+        ["Deposit"] = "/股票入金",
+        ["Withdraw"] = "/股票出金",
+        ["Reset"] = "/股票重置",
+        ["AdminAdd"] = "/股票管理 添加",
+        ["AdminRemove"] = "/股票管理 移除",
+        ["AdminList"] = "/股票管理 列表",
+        ["Price"] = "/股价",
+        ["Buy"] = "/买入",
+        ["LimitBuy"] = "/限价买入",
+        ["Sell"] = "/卖出",
+        ["LimitSell"] = "/限价卖出",
+        ["Cancel"] = "/股票撤单",
+        ["Rank"] = "/股票排行",
+        ["GlobalRank"] = "/全局排行",
+        ["History"] = "/历史订单",
+        ["Help"] = "/股票帮助",
+    };
+
+    /// <summary>Regex 型命令的固定参数后缀（不可修改，防止破坏命名组）</summary>
+    public static readonly Dictionary<string, string> ParamSuffixes = new()
+    {
+        ["Deposit"] = @"\s+(?<qq>\d{5,12})\s+(?<amount>\d+(\.\d+)?)",
+        ["Withdraw"] = @"\s+(?<amount>\d+(\.\d+)?)",
+        ["Reset"] = @"\s+(?<qq>\d{5,12})",
+        ["AdminAdd"] = @"\s+(?<qq>\d{5,12})",
+        ["AdminRemove"] = @"\s+(?<qq>\d{5,12})",
+        ["Price"] = @"\s+(?<code>\w{2,8})",
+        ["Buy"] = @"\s+(?<code>\w{2,8})\s+(?<qty>\d+)",
+        ["LimitBuy"] = @"\s+(?<code>\w{2,8})\s+(?<qty>\d+)\s+(?<price>\d+(\.\d+)?)",
+        ["Sell"] = @"\s+(?<code>\w{2,8})\s+(?<qty>\d+)",
+        ["LimitSell"] = @"\s+(?<code>\w{2,8})\s+(?<qty>\d+)\s+(?<price>\d+(\.\d+)?)",
+        ["Cancel"] = @"\s+(?<orderId>\d+)",
+    };
+
+    /// <summary>获取当前触发词</summary>
+    public string GetTrigger(string name)
+        => Triggers.TryGetValue(name, out var t) && !string.IsNullOrWhiteSpace(t) ? t : DefaultTriggers[name];
+
+    /// <summary>获取完整的 DynamicCommand 用模板。Regex 型 = ^触发词 + 固定后缀$；FullMatch 型 = 触发词原文</summary>
+    public string GetCommandTemplate(string name)
+    {
+        var trigger = GetTrigger(name);
+        if (ParamSuffixes.TryGetValue(name, out var suffix))
+        {
+            return $"^{Regex.Escape(trigger)}{suffix}$";
+        }
+
+        return trigger;
+    }
 
     public async Task LoadAsync(SqlSugarScope db)
     {
@@ -46,6 +106,16 @@ public class ConfigService
             CustomHelpText = "";
         }
 
+        if (dict.TryGetValue("CommandTriggers", out var triggersJson) && !string.IsNullOrWhiteSpace(triggersJson))
+        {
+            try { Triggers = JsonSerializer.Deserialize<Dictionary<string, string>>(triggersJson) ?? []; }
+            catch { Triggers = []; }
+        }
+        else
+        {
+            Triggers = [];
+        }
+
         if (dict.TryGetValue("GroupWhitelist", out var wl) && !string.IsNullOrWhiteSpace(wl))
         {
             GroupWhitelist = ParseIdList(wl);
@@ -68,6 +138,13 @@ public class ConfigService
 
     /// <summary>将ID集合规范化为逗号分隔的存储字符串</summary>
     public static string FormatIdList(HashSet<long> ids) => string.Join(",", ids);
+
+    /// <summary>保存自定义触发词到数据库（仅保存与默认值不同的）</summary>
+    public async Task SaveTriggersAsync(SqlSugarScope db, Dictionary<string, string> triggers)
+    {
+        var json = JsonSerializer.Serialize(triggers);
+        await SetAsync(db, "CommandTriggers", json);
+    }
 
     public async Task SetAsync(SqlSugarScope db, string key, string value)
     {

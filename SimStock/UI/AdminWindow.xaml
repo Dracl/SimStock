@@ -301,6 +301,37 @@
                         </StackPanel>
                     </GroupBox>
 
+                    <GroupBox
+                        Margin="0,0,0,15"
+                        Padding="10"
+                        Header="命令模板">
+                        <StackPanel>
+                            <DataGrid
+                                x:Name="CmdTemplateGrid"
+                                Height="300"
+                                AutoGenerateColumns="False"
+                                CanUserAddRows="False"
+                                CanUserDeleteRows="False"
+                                SelectionMode="Single">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn
+                                        Width="120"
+                                        Binding="{Binding Name}"
+                                        Header="命令"
+                                        IsReadOnly="True" />
+                                    <DataGridTextColumn
+                                        Width="*"
+                                        Binding="{Binding Template, UpdateSourceTrigger=PropertyChanged}"
+                                        Header="触发模板" />
+                                </DataGrid.Columns>
+                            </DataGrid>
+                            <TextBlock
+                                Margin="0,2,0,0"
+                                Foreground="Gray"
+                                Text="仅可修改命令的触发词部分（如 /限价买入），参数部分（如 代码 数量 价格）固定不可修改以防止破坏功能。保存后即时生效。" />
+                        </StackPanel>
+                    </GroupBox>
+
                     <Button
                         Width="100"
                         Height="32"

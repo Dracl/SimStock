@@ -122,6 +122,7 @@ public partial class AdminWindow : Window
         await LoadTrades();
         LoadSettings();
         await LoadGroupList();
+        LoadCommandTemplates();
     }
 
     private async Task LoadUsers()
@@ -201,6 +202,7 @@ public partial class AdminWindow : Window
         GroupWhitelistInput.Text = string.Join(", ", Entry.Config.GroupWhitelist);
         UserBlacklistInput.Text = string.Join(", ", Entry.Config.UserBlacklist);
         CustomHelpTextInput.Text = Entry.Config.CustomHelpText;
+        LoadCommandTemplates();
     }
 
     private async void RefreshUsers_Click(object sender, RoutedEventArgs e) => await LoadUsers();
@@ -438,6 +440,14 @@ public partial class AdminWindow : Window
 
             await Entry.Config.SetAsync(db, "CustomHelpText", CustomHelpTextInput.Text.Trim());
 
+            if (CmdTemplateGrid.ItemsSource is List<CmdTemplateRow> rows)
+            {
+                var triggers = rows
+                    .Where(r => !string.IsNullOrWhiteSpace(r.Template) && r.Template != ConfigService.DefaultTriggers.GetValueOrDefault(r.Name))
+                    .ToDictionary(r => r.Name, r => r.Template);
+                await Entry.Config.SaveTriggersAsync(db, triggers);
+            }
+
             MessageBox.Show("设置已保存", "提示", MessageBoxButton.OK, MessageBoxImage.Information);
             LoadSettings();
         }
@@ -452,6 +462,17 @@ public partial class AdminWindow : Window
     private async void RefreshGroupList_Click(object sender, RoutedEventArgs e)
     {
         await LoadGroupList();
+    }
+
+    private void LoadCommandTemplates()
+    {
+        var items = ConfigService.DefaultTriggers.Select(kv => new CmdTemplateRow
+        {
+            Name = kv.Key,
+            Template = Entry.Config.GetTrigger(kv.Key)
+        }).OrderBy(r => r.Name).ToList();
+
+        CmdTemplateGrid.ItemsSource = items;
     }
 
     private async Task LoadGroupList()
@@ -587,4 +608,10 @@ public partial class AdminWindow : Window
         }
     }
 
+}
+
+public class CmdTemplateRow
+{
+    public string Name { get; set; } = "";
+    public string Template { get; set; } = "";
 }

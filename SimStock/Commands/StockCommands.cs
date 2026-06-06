@@ -12,9 +12,28 @@ namespace SimStock;
 /// </summary>
 public class StockCommands : CommandHandlerBase
 {
+    public string RegisterCmd => Entry.Config.GetCommandTemplate("Register");
+    public string AccountCmd => Entry.Config.GetCommandTemplate("Account");
+    public string DepositCmd => Entry.Config.GetCommandTemplate("Deposit");
+    public string WithdrawCmd => Entry.Config.GetCommandTemplate("Withdraw");
+    public string ResetCmd => Entry.Config.GetCommandTemplate("Reset");
+    public string AdminAddCmd => Entry.Config.GetCommandTemplate("AdminAdd");
+    public string AdminRemoveCmd => Entry.Config.GetCommandTemplate("AdminRemove");
+    public string AdminListCmd => Entry.Config.GetCommandTemplate("AdminList");
+    public string PriceCmd => Entry.Config.GetCommandTemplate("Price");
+    public string BuyCmd => Entry.Config.GetCommandTemplate("Buy");
+    public string LimitBuyCmd => Entry.Config.GetCommandTemplate("LimitBuy");
+    public string SellCmd => Entry.Config.GetCommandTemplate("Sell");
+    public string LimitSellCmd => Entry.Config.GetCommandTemplate("LimitSell");
+    public string CancelCmd => Entry.Config.GetCommandTemplate("Cancel");
+    public string RankCmd => Entry.Config.GetCommandTemplate("Rank");
+    public string GlobalRankCmd => Entry.Config.GetCommandTemplate("GlobalRank");
+    public string HistoryCmd => Entry.Config.GetCommandTemplate("History");
+    public string HelpCmd => Entry.Config.GetCommandTemplate("Help");
+
     // ==================== 账户管理 ====================
 
-    [Command(MatchMode.FullMatch, "/股票注册")]
+    [DynamicCommand(nameof(RegisterCmd), MatchMode.FullMatch)]
     public async Task<EventHandleResult> CmdRegister(GroupMessageContext e)
     {
         var (w, err) = SafetyChecker.CheckGroupWhitelist(e.FromGroup.Id);
@@ -43,7 +62,7 @@ public class StockCommands : CommandHandlerBase
         return EventHandleResult.Block;
     }
 
-    [Command(MatchMode.FullMatch, "/股票账户")]
+    [DynamicCommand(nameof(AccountCmd), MatchMode.FullMatch)]
     public async Task<EventHandleResult> CmdAccount(GroupMessageContext e)
     {
         var (w, err) = SafetyChecker.CheckGroupWhitelist(e.FromGroup.Id);
@@ -98,7 +117,7 @@ public class StockCommands : CommandHandlerBase
         return EventHandleResult.Block;
     }
 
-    [Command(MatchMode.Regex, @"^/股票入金\s+(?<qq>\d{5,12})\s+(?<amount>\d+(\.\d+)?)$")]
+    [DynamicCommand(nameof(DepositCmd), MatchMode.Regex)]
     public async Task<EventHandleResult> CmdDeposit(GroupMessageContext e, long qq, decimal amount)
     {
         amount = Math.Round(amount, 2);
@@ -128,7 +147,7 @@ public class StockCommands : CommandHandlerBase
         return EventHandleResult.Block;
     }
 
-    [Command(MatchMode.Regex, @"^/股票出金\s+(?<amount>\d+(\.\d+)?)$")]
+    [DynamicCommand(nameof(WithdrawCmd), MatchMode.Regex)]
     public async Task<EventHandleResult> CmdWithdraw(GroupMessageContext e, decimal amount)
     {
         amount = Math.Round(amount, 2);
@@ -152,7 +171,7 @@ public class StockCommands : CommandHandlerBase
         return EventHandleResult.Block;
     }
 
-    [Command(MatchMode.Regex, @"^/股票重置\s+(?<qq>\d{5,12})$")]
+    [DynamicCommand(nameof(ResetCmd), MatchMode.Regex)]
     public async Task<EventHandleResult> CmdReset(GroupMessageContext e, long qq)
     {
         var (w, err) = SafetyChecker.CheckGroupWhitelist(e.FromGroup.Id);
@@ -183,7 +202,7 @@ public class StockCommands : CommandHandlerBase
 
     // ==================== 管理员管理 ====================
 
-    [Command(MatchMode.Regex, @"^/股票管理\s+添加\s+(?<qq>\d{5,12})$")]
+    [DynamicCommand(nameof(AdminAddCmd), MatchMode.Regex)]
     public async Task<EventHandleResult> CmdAdminAdd(GroupMessageContext e, long qq)
     {
         var (w, err) = SafetyChecker.CheckGroupWhitelist(e.FromGroup.Id);
@@ -212,7 +231,7 @@ public class StockCommands : CommandHandlerBase
         return EventHandleResult.Block;
     }
 
-    [Command(MatchMode.Regex, @"^/股票管理\s+移除\s+(?<qq>\d{5,12})$")]
+    [DynamicCommand(nameof(AdminRemoveCmd), MatchMode.Regex)]
     public async Task<EventHandleResult> CmdAdminRemove(GroupMessageContext e, long qq)
     {
         var (w, err) = SafetyChecker.CheckGroupWhitelist(e.FromGroup.Id);
@@ -241,7 +260,7 @@ public class StockCommands : CommandHandlerBase
         return EventHandleResult.Block;
     }
 
-    [Command(MatchMode.FullMatch, "/股票管理 列表")]
+    [DynamicCommand(nameof(AdminListCmd), MatchMode.FullMatch)]
     public async Task<EventHandleResult> CmdAdminList(GroupMessageContext e)
     {
         var (w, err) = SafetyChecker.CheckGroupWhitelist(e.FromGroup.Id);
@@ -279,7 +298,7 @@ public class StockCommands : CommandHandlerBase
 
     // ==================== 行情查询 ====================
 
-    [Command(MatchMode.Regex, @"^/股价\s+(?<code>\w{2,8})$")]
+    [DynamicCommand(nameof(PriceCmd), MatchMode.Regex)]
     public async Task<EventHandleResult> CmdPrice(GroupMessageContext e, string code)
     {
         var (w, err) = SafetyChecker.CheckGroupWhitelist(e.FromGroup.Id);
@@ -327,7 +346,7 @@ public class StockCommands : CommandHandlerBase
 
     // ==================== 交易操作 ====================
 
-    [Command(MatchMode.Regex, @"^/买入\s+(?<code>\w{2,8})\s+(?<qty>\d+)$")]
+    [DynamicCommand(nameof(BuyCmd), MatchMode.Regex)]
     public async Task<EventHandleResult> CmdBuy(GroupMessageContext e, string code, int qty)
     {
         var (w, err) = SafetyChecker.CheckGroupWhitelist(e.FromGroup.Id);
@@ -368,7 +387,7 @@ public class StockCommands : CommandHandlerBase
         return EventHandleResult.Block;
     }
 
-    [Command(MatchMode.Regex, @"^/限价买入\s+(?<code>\w{2,8})\s+(?<qty>\d+)\s+(?<price>\d+(\.\d+)?)$")]
+    [DynamicCommand(nameof(LimitBuyCmd), MatchMode.Regex)]
     public async Task<EventHandleResult> CmdLimitBuy(GroupMessageContext e, string code, int qty, decimal price)
     {
         price = Math.Round(price, 2);
@@ -420,7 +439,7 @@ public class StockCommands : CommandHandlerBase
         return EventHandleResult.Block;
     }
 
-    [Command(MatchMode.Regex, @"^/卖出\s+(?<code>\w{2,8})\s+(?<qty>\d+)$")]
+    [DynamicCommand(nameof(SellCmd), MatchMode.Regex)]
     public async Task<EventHandleResult> CmdSell(GroupMessageContext e, string code, int qty)
     {
         var (w, err) = SafetyChecker.CheckGroupWhitelist(e.FromGroup.Id);
@@ -461,7 +480,7 @@ public class StockCommands : CommandHandlerBase
         return EventHandleResult.Block;
     }
 
-    [Command(MatchMode.Regex, @"^/限价卖出\s+(?<code>\w{2,8})\s+(?<qty>\d+)\s+(?<price>\d+(\.\d+)?)$")]
+    [DynamicCommand(nameof(LimitSellCmd), MatchMode.Regex)]
     public async Task<EventHandleResult> CmdLimitSell(GroupMessageContext e, string code, int qty, decimal price)
     {
         price = Math.Round(price, 2);
@@ -513,7 +532,7 @@ public class StockCommands : CommandHandlerBase
         return EventHandleResult.Block;
     }
 
-    [Command(MatchMode.Regex, @"^/股票撤单\s+(?<orderId>\d+)$")]
+    [DynamicCommand(nameof(CancelCmd), MatchMode.Regex)]
     public async Task<EventHandleResult> CmdCancel(GroupMessageContext e, long orderId)
     {
         var (w, err) = SafetyChecker.CheckGroupWhitelist(e.FromGroup.Id);
@@ -544,7 +563,7 @@ public class StockCommands : CommandHandlerBase
 
     // ==================== 信息查询 ====================
 
-    [Command(MatchMode.FullMatch, "/股票排行")]
+    [DynamicCommand(nameof(RankCmd), MatchMode.FullMatch)]
     public async Task<EventHandleResult> CmdRank(GroupMessageContext e)
     {
         var (w, err) = SafetyChecker.CheckGroupWhitelist(e.FromGroup.Id);
@@ -566,7 +585,7 @@ public class StockCommands : CommandHandlerBase
         return EventHandleResult.Block;
     }
 
-    [Command(MatchMode.FullMatch, "/全局排行")]
+    [DynamicCommand(nameof(GlobalRankCmd), MatchMode.FullMatch)]
     public async Task<EventHandleResult> CmdGlobalRank(GroupMessageContext e)
     {
         var (w, err) = SafetyChecker.CheckGroupWhitelist(e.FromGroup.Id);
@@ -627,7 +646,7 @@ public class StockCommands : CommandHandlerBase
         }
     }
 
-    [Command(MatchMode.FullMatch, "/历史订单")]
+    [DynamicCommand(nameof(HistoryCmd), MatchMode.FullMatch)]
     public async Task<EventHandleResult> CmdHistory(GroupMessageContext e)
     {
         var (w, err) = SafetyChecker.CheckGroupWhitelist(e.FromGroup.Id);
@@ -670,7 +689,7 @@ public class StockCommands : CommandHandlerBase
         return EventHandleResult.Block;
     }
 
-    [Command(MatchMode.FullMatch, "/股票帮助")]
+    [DynamicCommand(nameof(HelpCmd), MatchMode.FullMatch)]
     public async Task<EventHandleResult> CmdHelp(GroupMessageContext e)
     {
         var (w, err) = SafetyChecker.CheckGroupWhitelist(e.FromGroup.Id);
