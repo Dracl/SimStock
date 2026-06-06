@@ -32,17 +32,13 @@ public static class StockCodeParser
 
         byte market;
         if (prefix == "sh")
-        {
             market = TdxConstants.MarketSH;
-        }
         else if (prefix == "bj")
-        {
             market = TdxConstants.MarketBJ;
-        }
+        else if (prefix == "sz")
+            market = TdxConstants.MarketSZ;
         else
-        {
-            market = TdxConstants.MarketSZ; // 默认深市（sz或省略）
-        }
+            return null; // 无前缀，留给 TryInferMarket 推断
 
         return (market, code);
     }
@@ -92,5 +88,13 @@ public static class StockCodeParser
     public static (byte market, string code)? ParseNormalized(string normalizedCode)
     {
         return TryParseWithPrefix(normalizedCode);
+    }
+
+    /// <summary>去掉交易所前缀用于显示: "sz000001" → "000001"</summary>
+    public static string ToDisplayCode(string normalizedCode)
+    {
+        if (normalizedCode.Length >= 2 && normalizedCode[0] is >= 'a' and <= 'z' && normalizedCode[1] is >= 'a' and <= 'z')
+            return normalizedCode[2..];
+        return normalizedCode;
     }
 }

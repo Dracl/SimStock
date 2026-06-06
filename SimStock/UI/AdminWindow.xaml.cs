@@ -217,7 +217,7 @@ public partial class AdminWindow : Window
         }
 
         var result = MessageBox.Show(
-            $"确认删除持仓？\n股票: {pos.StockCode}\n数量: {pos.Quantity}\n均价: {pos.AvgCost:F2}",
+            $"确认删除持仓？\n股票: {StockCodeParser.ToDisplayCode(pos.StockCode)}\n数量: {pos.Quantity}\n均价: {pos.AvgCost:F2}",
             "确认删除", MessageBoxButton.YesNo, MessageBoxImage.Warning);
         if (result != MessageBoxResult.Yes)
         {
@@ -322,7 +322,7 @@ public partial class AdminWindow : Window
         }
 
         var result = MessageBox.Show(
-            $"确认强制撤销订单 {order.Id}？\n股票: {order.StockCode} 数量: {order.Quantity}",
+            $"确认强制撤销订单 {order.Id}？\n股票: {StockCodeParser.ToDisplayCode(order.StockCode)} 数量: {order.Quantity}",
             "确认操作", MessageBoxButton.YesNo, MessageBoxImage.Warning);
         if (result != MessageBoxResult.Yes)
         {

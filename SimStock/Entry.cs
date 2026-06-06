@@ -24,6 +24,8 @@ public class Entry : PluginBase
 
     public static QuoteService Quotes { get; private set; } = null!;
 
+    public static StockNameService StockNames { get; private set; } = null!;
+
     public static IPluginApi Api { get; private set; } = null!;
 
     public override async Task OnEnableAsync(CancellationToken ct)
@@ -62,6 +64,7 @@ public class Entry : PluginBase
         Quotes = new QuoteService();
         ConnMgr = new ConnectionManager(appDir);
         ConnMgr.SetHolidayCacheDirectory(appDir);
+        StockNames = new StockNameService(appDir, ConnMgr);
 
         // 启动时清理遗留挂单
         await CleanupPendingOrdersOnStartup();
