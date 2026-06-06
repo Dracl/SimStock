@@ -35,7 +35,7 @@ public class Entry : PluginBase
         API.Logger.Info("水银韭菜机", $"插件目录: {appDir}");
 
         // 初始化数据库
-        var dbPath = Path.Combine(appDir, "simstock.db");
+        var dbPath = Path.Combine(appDir, "core.db");
         var connStr = $"Data Source={dbPath};Pooling=true;";
 
         Db = new SqlSugarScope(new ConnectionConfig
