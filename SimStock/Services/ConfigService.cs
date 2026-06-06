@@ -30,14 +30,26 @@ public class ConfigService
 
         if (dict.TryGetValue("GroupWhitelist", out var wl) && !string.IsNullOrWhiteSpace(wl))
         {
-            GroupWhitelist = wl.Split(',').Select(s => long.TryParse(s.Trim(), out var id) ? id : 0).Where(id => id > 0).ToHashSet();
+            GroupWhitelist = ParseIdList(wl);
         }
 
         if (dict.TryGetValue("UserBlacklist", out var bl) && !string.IsNullOrWhiteSpace(bl))
         {
-            UserBlacklist = bl.Split(',').Select(s => long.TryParse(s.Trim(), out var id) ? id : 0).Where(id => id > 0).ToHashSet();
+            UserBlacklist = ParseIdList(bl);
         }
     }
+
+    /// <summary>解析逗号分隔的ID列表，同时支持英文逗号和中文逗号，无效条目静默跳过</summary>
+    public static HashSet<long> ParseIdList(string raw)
+    {
+        return raw.Split(',', '，')
+            .Select(s => long.TryParse(s.Trim(), out var id) ? id : 0)
+            .Where(id => id > 0)
+            .ToHashSet();
+    }
+
+    /// <summary>将ID集合规范化为逗号分隔的存储字符串</summary>
+    public static string FormatIdList(HashSet<long> ids) => string.Join(",", ids);
 
     public async Task SetAsync(SqlSugarScope db, string key, string value)
     {

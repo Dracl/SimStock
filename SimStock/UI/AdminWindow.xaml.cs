@@ -391,22 +391,36 @@ public partial class AdminWindow : Window
                 await Entry.Config.SetAsync(db, "QuotePollingIntervalSec", interval.ToString());
             }
 
-            var whitelist = GroupWhitelistInput.Text.Trim();
-            if (!string.IsNullOrEmpty(whitelist))
+            var whitelistRaw = GroupWhitelistInput.Text.Trim();
+            if (!string.IsNullOrEmpty(whitelistRaw))
             {
-                // 验证格式
-                var ids = whitelist.Split(',').Select(s => s.Trim()).Where(s => long.TryParse(s, out _));
-                await Entry.Config.SetAsync(db, "GroupWhitelist", whitelist);
+                var parsed = ConfigService.ParseIdList(whitelistRaw);
+                var rawParts = whitelistRaw.Split(',', '，').Select(s => s.Trim()).Where(s => s.Length > 0).ToList();
+                if (parsed.Count < rawParts.Count)
+                {
+                    var invalid = rawParts.Where(s => !long.TryParse(s, out _)).ToList();
+                    MessageBox.Show($"以下群号格式无效，已跳过:\n{string.Join("\n", invalid)}", "提示", MessageBoxButton.OK, MessageBoxImage.Warning);
+                }
+
+                await Entry.Config.SetAsync(db, "GroupWhitelist", ConfigService.FormatIdList(parsed));
             }
             else
             {
                 await Entry.Config.SetAsync(db, "GroupWhitelist", "");
             }
 
-            var blacklist = UserBlacklistInput.Text.Trim();
-            if (!string.IsNullOrEmpty(blacklist))
+            var blacklistRaw = UserBlacklistInput.Text.Trim();
+            if (!string.IsNullOrEmpty(blacklistRaw))
             {
-                await Entry.Config.SetAsync(db, "UserBlacklist", blacklist);
+                var parsed = ConfigService.ParseIdList(blacklistRaw);
+                var rawParts = blacklistRaw.Split(',', '，').Select(s => s.Trim()).Where(s => s.Length > 0).ToList();
+                if (parsed.Count < rawParts.Count)
+                {
+                    var invalid = rawParts.Where(s => !long.TryParse(s, out _)).ToList();
+                    MessageBox.Show($"以下QQ号格式无效，已跳过:\n{string.Join("\n", invalid)}", "提示", MessageBoxButton.OK, MessageBoxImage.Warning);
+                }
+
+                await Entry.Config.SetAsync(db, "UserBlacklist", ConfigService.FormatIdList(parsed));
             }
             else
             {
