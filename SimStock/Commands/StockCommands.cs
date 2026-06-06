@@ -80,7 +80,7 @@ public class StockCommands : CommandHandlerBase
         var account = await AccountService.GetAccountAsync(e.FromQQ.Id, e.FromGroup.Id);
         if (account == null)
         {
-            await e.SendMessageAsync("⚠️ 您还没有交易账户，请使用 /股票注册 创建");
+            await e.SendMessageAsync($"⚠️ 您还没有交易账户，请使用 {Entry.Config.GetTrigger("Register")} 创建");
             return EventHandleResult.Block;
         }
 
@@ -664,7 +664,7 @@ public class StockCommands : CommandHandlerBase
         var account = await AccountService.GetAccountAsync(e.FromQQ.Id, e.FromGroup.Id);
         if (account == null)
         {
-            await e.SendMessageAsync("⚠️ 请先使用 /股票注册 创建账户");
+            await e.SendMessageAsync($"⚠️ 请先使用 {Entry.Config.GetTrigger("Register")} 创建账户");
             return EventHandleResult.Block;
         }
 
@@ -707,38 +707,47 @@ public class StockCommands : CommandHandlerBase
         var custom = Entry.Config.CustomHelpText;
         var helpText = !string.IsNullOrWhiteSpace(custom)
             ? custom
-            : """
+            : BuildDefaultHelpText();
+
+        await e.SendMessageAsync(helpText);
+        return EventHandleResult.Block;
+    }
+
+    private static string BuildDefaultHelpText()
+    {
+        var t = (string name) => Entry.Config.GetTrigger(name);
+        return $"""
             🌿 === 水银韭菜机 帮助 ===
 
             💰 【账户管理】
-            /股票注册          创建账户，获得初始资金
-            /股票账户          查看余额、持仓、挂单
-            /股票出金 金额     取出账户资金
+            {t("Register")}          创建账户，获得初始资金
+            {t("Account")}          查看余额、持仓、挂单
+            {t("Withdraw")} 金额     取出账户资金
 
             🔧 【管理员命令】
-            /股票入金 QQ 金额  为指定用户增加资金
-            /股票重置 QQ       重置指定用户的账户
-            /股票管理 添加 QQ  添加插件管理员
-            /股票管理 移除 QQ  移除插件管理员
-            /股票管理 列表     查看本群管理员
+            {t("Deposit")} QQ 金额  为指定用户增加资金
+            {t("Reset")} QQ       重置指定用户的账户
+            {t("AdminAdd")} QQ  添加插件管理员
+            {t("AdminRemove")} QQ  移除插件管理员
+            {t("AdminList")}     查看本群管理员
 
             📈 【行情查询】
-            /股价 代码         查询实时股价
-              示例: /股价 sz000001
+            {t("Price")} 代码     查询实时股价
+              示例: {t("Price")} sz000001
               前缀: sz深市 sh沪市 bj北交所
 
             💹 【交易操作】
-            /买入 代码 数量    市价买入
-            /卖出 代码 数量    市价卖出
-            /限价买入 代码 数量 价格  挂限价买单
-            /限价卖出 代码 数量 价格  挂限价卖单
-            /股票撤单 订单号   撤销挂单
+            {t("Buy")} 代码 数量 市价买入
+            {t("Sell")} 代码 数量 市价卖出
+            {t("LimitBuy")} 代码 数量 价格  挂限价买单
+            {t("LimitSell")} 代码 数量 价格  挂限价卖单
+            {t("Cancel")} 订单号   撤销挂单
 
             🔍 【信息查询】
-            /股票排行          本群交易排行榜
-            /全局排行          全局交易排行榜
-            /历史订单          个人交易历史
-            /股票帮助          显示本帮助
+            {t("Rank")}          本群交易排行榜
+            {t("GlobalRank")}          全局交易排行榜
+            {t("History")}          个人交易历史
+            {t("Help")}          显示本帮助
 
             ⚠️ 【交易规则】
             - T+1制度: 当日买入的股票次日方可卖出
@@ -749,10 +758,7 @@ public class StockCommands : CommandHandlerBase
             - 交易单位: 100股（1手）的整数倍
             - 交易时段: 工作日 9:30-11:30 13:00-15:00
             - 限价单在满足条件时自动成交
-            - 不明确交易所时请加前缀，如 /买入 sz000001 100
+            - 不明确交易所时请加前缀，如 {t("Buy")} sz000001 100
             """;
-
-        await e.SendMessageAsync(helpText);
-        return EventHandleResult.Block;
     }
 }

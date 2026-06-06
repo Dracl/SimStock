@@ -49,7 +49,7 @@ public static class AccountService
         var account = await GetAccountAsync(qq, groupId);
         if (account == null)
         {
-            return (false, "请先使用 /股票注册 创建账户");
+            return (false, $"请先使用 {Entry.Config.GetTrigger("Register")} 创建账户");
         }
 
         account.Balance += amount;
@@ -69,7 +69,7 @@ public static class AccountService
         var account = await GetAccountAsync(qq, groupId);
         if (account == null)
         {
-            return (false, "请先使用 /股票注册 创建账户");
+            return (false, $"请先使用 {Entry.Config.GetTrigger("Register")} 创建账户");
         }
 
         if (amount > account.Balance)

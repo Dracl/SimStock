@@ -25,7 +25,7 @@ public class ConfigService
     /// <summary>所有命令的默认触发词</summary>
     public static readonly Dictionary<string, string> DefaultTriggers = new()
     {
-        ["Register"] = "/股票注册",
+        ["Register"] = "/股票开户",
         ["Account"] = "/股票账户",
         ["Deposit"] = "/股票入金",
         ["Withdraw"] = "/股票出金",
@@ -33,10 +33,10 @@ public class ConfigService
         ["AdminAdd"] = "/股票管理 添加",
         ["AdminRemove"] = "/股票管理 移除",
         ["AdminList"] = "/股票管理 列表",
-        ["Price"] = "/股价",
-        ["Buy"] = "/买入",
+        ["Price"] = "/股价查询",
+        ["Buy"] = "/买入股票",
         ["LimitBuy"] = "/限价买入",
-        ["Sell"] = "/卖出",
+        ["Sell"] = "/卖出股票",
         ["LimitSell"] = "/限价卖出",
         ["Cancel"] = "/股票撤单",
         ["Rank"] = "/股票排行",

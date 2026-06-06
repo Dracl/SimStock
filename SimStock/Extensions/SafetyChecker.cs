@@ -50,7 +50,7 @@ public static class SafetyChecker
             .FirstAsync(a => a.QQ == qq && a.GroupId == groupId);
         if (account == null)
         {
-            return (null, "请先使用 /股票注册 创建交易账户");
+            return (null, $"请先使用 {Entry.Config.GetTrigger("Register")} 创建交易账户");
         }
 
         return (account, null);
