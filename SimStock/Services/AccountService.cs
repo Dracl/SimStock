@@ -10,8 +10,6 @@ public static class AccountService
 {
     private static SqlSugarScope Db => Entry.Db!;
 
-    public const decimal DefaultInitialCapital = 1_000_000m;
-
     public static async Task<Account?> GetAccountAsync(long qq, long groupId)
     {
         return await Db.Queryable<Account>()
@@ -30,8 +28,8 @@ public static class AccountService
         {
             QQ = qq,
             GroupId = groupId,
-            Balance = DefaultInitialCapital,
-            TotalAsset = DefaultInitialCapital,
+            Balance = Entry.Config.InitialCapital,
+            TotalAsset = Entry.Config.InitialCapital,
             CreatedAt = DateTime.Now,
             UpdatedAt = DateTime.Now
         };

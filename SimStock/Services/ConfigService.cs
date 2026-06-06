@@ -9,6 +9,8 @@ public class ConfigService
 
     public int QuotePollingIntervalSec { get; set; } = 3;
 
+    public decimal InitialCapital { get; set; } = 1_000_000m;
+
     public HashSet<long> GroupWhitelist { get; set; } = [];
 
     public HashSet<long> UserBlacklist { get; set; } = [];
@@ -26,6 +28,11 @@ public class ConfigService
         if (dict.TryGetValue("QuotePollingIntervalSec", out var interval) && int.TryParse(interval, out var v2) && v2 >= 1)
         {
             QuotePollingIntervalSec = v2;
+        }
+
+        if (dict.TryGetValue("InitialCapital", out var capital) && decimal.TryParse(capital, out var v3) && v3 > 0)
+        {
+            InitialCapital = v3;
         }
 
         if (dict.TryGetValue("GroupWhitelist", out var wl) && !string.IsNullOrWhiteSpace(wl))

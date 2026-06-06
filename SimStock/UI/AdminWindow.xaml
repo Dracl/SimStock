@@ -223,6 +223,23 @@
                     <GroupBox
                         Margin="0,0,0,15"
                         Padding="10"
+                        Header="账户设置">
+                        <StackPanel>
+                            <TextBlock Margin="0,8,0,4" Text="初始资金(元)" />
+                            <TextBox
+                                x:Name="InitialCapitalInput"
+                                Width="400"
+                                HorizontalAlignment="Left" />
+                            <TextBlock
+                                Margin="0,2,0,0"
+                                Foreground="Gray"
+                                Text="新注册账户的初始资金，默认1000000" />
+                        </StackPanel>
+                    </GroupBox>
+
+                    <GroupBox
+                        Margin="0,0,0,15"
+                        Padding="10"
                         Header="行情监控">
                         <StackPanel>
                             <TextBlock Margin="0,8,0,4" Text="轮询间隔(秒)" />

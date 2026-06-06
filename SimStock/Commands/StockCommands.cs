@@ -37,7 +37,7 @@ public class StockCommands : CommandHandlerBase
 
         await e.SendMessageAsync(new MessageBuilder()
             .At(e.FromQQ.Id)
-            .Text($" 🎉 账户注册成功！初始资金: {AccountService.DefaultInitialCapital:N0} 元\n输入 /股票帮助 查看完整命令列表")
+            .Text($" 🎉 账户注册成功！初始资金: {Entry.Config.InitialCapital:N0} 元\n输入 /股票帮助 查看完整命令列表")
             .Build());
         return EventHandleResult.Block;
     }
@@ -649,7 +649,7 @@ public class StockCommands : CommandHandlerBase
             🌿 === 水银韭菜机 帮助 ===
 
             💰 【账户管理】
-            /股票注册          创建账户，获得100万初始资金
+            /股票注册          创建账户，获得初始资金
             /股票账户          查看余额、持仓、挂单
             /股票入金 金额     增加账户资金
             /股票出金 金额     取出账户资金

@@ -197,6 +197,7 @@ public partial class AdminWindow : Window
     {
         MaxOrdersInput.Text = Entry.Config.MaxPendingOrdersPerUser.ToString();
         PollingIntervalInput.Text = Entry.Config.QuotePollingIntervalSec.ToString();
+        InitialCapitalInput.Text = Entry.Config.InitialCapital.ToString("F0");
         GroupWhitelistInput.Text = string.Join(", ", Entry.Config.GroupWhitelist);
         UserBlacklistInput.Text = string.Join(", ", Entry.Config.UserBlacklist);
     }
@@ -391,6 +392,11 @@ public partial class AdminWindow : Window
             if (int.TryParse(PollingIntervalInput.Text.Trim(), out var interval) && interval >= 1)
             {
                 await Entry.Config.SetAsync(db, "QuotePollingIntervalSec", interval.ToString());
+            }
+
+            if (decimal.TryParse(InitialCapitalInput.Text.Trim(), out var capital) && capital > 0)
+            {
+                await Entry.Config.SetAsync(db, "InitialCapital", capital.ToString("F0"));
             }
 
             var whitelistRaw = GroupWhitelistInput.Text.Trim();
