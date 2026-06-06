@@ -110,6 +110,14 @@ public static class AccountService
             .ToListAsync();
     }
 
+    public static async Task<List<Account>> GetGlobalLeaderboardAsync(int top = 20)
+    {
+        return await Db.Queryable<Account>()
+            .OrderBy(a => a.TotalAsset, OrderByType.Desc)
+            .Take(top)
+            .ToListAsync();
+    }
+
     public static async Task<List<Position>> GetPositionsAsync(long accountId)
     {
         return await Db.Queryable<Position>()

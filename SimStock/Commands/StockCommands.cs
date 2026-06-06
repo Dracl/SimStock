@@ -3,6 +3,7 @@ using Another_Mirai_Native.Abstractions.Attributes;
 using Another_Mirai_Native.Abstractions.Context;
 using Another_Mirai_Native.Abstractions.Enums;
 using Another_Mirai_Native.Abstractions.Models;
+using SimStock.Models;
 
 namespace SimStock;
 
@@ -547,35 +548,83 @@ public class StockCommands : CommandHandlerBase
     public async Task<EventHandleResult> CmdRank(GroupMessageContext e)
     {
         var (w, err) = SafetyChecker.CheckGroupWhitelist(e.FromGroup.Id);
-        if (!w)
-        {
-            return EventHandleResult.Block;
-        }
+        if (!w) { return EventHandleResult.Block; }
         var (b, err2) = SafetyChecker.CheckUserBlacklist(e.FromQQ.Id);
-        if (!b)
-        {
-            return EventHandleResult.Block;
-        }
+        if (!b) { return EventHandleResult.Block; }
 
         var leaderboard = await AccountService.GetLeaderboardAsync(e.FromGroup.Id, 20);
         if (leaderboard.Count == 0)
         {
-            await e.SendMessageAsync("🏆 本群还没有人注册交易账户");
+            await e.SendMessageAsync("本群还没有人注册交易账户");
             return EventHandleResult.Block;
         }
 
         var sb = new System.Text.StringBuilder();
-        sb.AppendLine("🏆 === 交易排行榜 TOP 20 ===");
-        sb.AppendLine($"{"🥇排名",-6} {"QQ",-14} {"💰总资产",14}");
-        for (int i = 0; i < leaderboard.Count; i++)
-        {
-            var a = leaderboard[i];
-            var medal = i == 0 ? "🥇" : i == 1 ? "🥈" : i == 2 ? "🥉" : $"{i + 1}.";
-            sb.AppendLine($"{medal,-4}  {a.QQ,-12} {a.TotalAsset,14:N2}");
-        }
-
+        sb.AppendLine("🏆 === 本群排行 TOP 20 ===");
+        await BuildLeaderboardAsync(sb, leaderboard, e.FromGroup.Id);
         await e.SendMessageAsync(sb.ToString());
         return EventHandleResult.Block;
+    }
+
+    [Command(MatchMode.FullMatch, "/全局排行")]
+    public async Task<EventHandleResult> CmdGlobalRank(GroupMessageContext e)
+    {
+        var (w, err) = SafetyChecker.CheckGroupWhitelist(e.FromGroup.Id);
+        if (!w) { return EventHandleResult.Block; }
+        var (b, err2) = SafetyChecker.CheckUserBlacklist(e.FromQQ.Id);
+        if (!b) { return EventHandleResult.Block; }
+
+        var leaderboard = await AccountService.GetGlobalLeaderboardAsync(20);
+        if (leaderboard.Count == 0)
+        {
+            await e.SendMessageAsync("还没有人注册交易账户");
+            return EventHandleResult.Block;
+        }
+
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("🌍 === 全局排行 TOP 20 ===");
+        await BuildLeaderboardAsync(sb, leaderboard, e.FromGroup.Id);
+        await e.SendMessageAsync(sb.ToString());
+        return EventHandleResult.Block;
+    }
+
+    /// <summary>构建排行榜文本。昵称退化: 群名片 → 昵称 → QQ</summary>
+    private static async Task BuildLeaderboardAsync(System.Text.StringBuilder sb, List<Account> accounts, long groupId)
+    {
+        // 批量获取群成员信息用于显示名称
+        var nameCache = new Dictionary<long, string>();
+        foreach (var a in accounts)
+        {
+            if (nameCache.ContainsKey(a.QQ))
+            {
+                continue;
+            }
+
+            try
+            {
+                var member = Entry.Api.GroupApi.GetGroupMemberInfo(groupId, a.QQ);
+                if (member != null)
+                {
+                    nameCache[a.QQ] = !string.IsNullOrEmpty(member.Card) ? member.Card
+                        : !string.IsNullOrEmpty(member.Nick) ? member.Nick
+                        : a.QQ.ToString();
+                }
+                else
+                {
+                    nameCache[a.QQ] = a.QQ.ToString();
+                }
+            }
+            catch { nameCache[a.QQ] = a.QQ.ToString(); }
+        }
+
+        sb.AppendLine($"{"排名",-4} {"昵称",-16} {"💰总资产",14}");
+        for (int i = 0; i < accounts.Count; i++)
+        {
+            var a = accounts[i];
+            var medal = i == 0 ? "🥇" : i == 1 ? "🥈" : i == 2 ? "🥉" : $"{i + 1}.";
+            var name = nameCache.TryGetValue(a.QQ, out var n) ? n : a.QQ.ToString();
+            sb.AppendLine($"{medal,-4} {name,-14} {a.TotalAsset,14:N2}");
+        }
     }
 
     [Command(MatchMode.FullMatch, "/历史订单")]
@@ -668,6 +717,7 @@ public class StockCommands : CommandHandlerBase
 
             🔍 【信息查询】
             /股票排行          本群交易排行榜
+            /全局排行          全局交易排行榜
             /历史订单          个人交易历史
             /股票帮助          显示本帮助
 
