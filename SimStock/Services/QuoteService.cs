@@ -15,7 +15,7 @@ public class QuoteService
     /// </summary>
     public async Task<(byte market, string code, string normalizedCode, string? error)> ResolveCodeAsync(string input)
     {
-        // 先尝试带前缀解析
+        // 1. 带前缀解析: sz000001, sh600000 等
         var parsed = StockCodeParser.TryParseWithPrefix(input);
         if (parsed.HasValue)
         {
@@ -23,7 +23,7 @@ public class QuoteService
             return (market, code, StockCodeParser.NormalizeCode(market, code), null);
         }
 
-        // 纯数字代码，尝试推断
+        // 2. 纯数字代码，根据代码段推断
         var codeOnly = input.Trim().PadLeft(6, '0');
         var inferred = StockCodeParser.TryInferMarket(codeOnly);
         if (inferred.HasValue)
@@ -32,30 +32,54 @@ public class QuoteService
             return (market, code, StockCodeParser.NormalizeCode(market, code), null);
         }
 
-        // 无法推断，尝试在两个市场都查询
+        // 3. 无法推断，连接行情源实际查询
         var client = await Entry.ConnMgr!.EnsureConnectedAsync();
         if (client == null)
-        {
             return (0, "", "", "行情服务暂不可用，请稍后重试");
+
+        var candidates = new[] { TdxConstants.MarketSZ, TdxConstants.MarketSH, TdxConstants.MarketBJ };
+        byte? foundMarket = null;
+
+        foreach (var mkt in candidates)
+        {
+            try
+            {
+                var type = TdxConstants.GetSecurityType(mkt, codeOnly);
+                if (!type.EndsWith("_A_STOCK")) continue;
+
+                // 尝试拉取实时行情确认该代码在此市场真实存在
+                var cmd = new GetSecurityQuotesCmd();
+                cmd.SetParams([(mkt, codeOnly)]);
+                var results = cmd.ParseResponse(client.SendPacket(cmd.BuildRequest()));
+                if (results.Length > 0 && results[0].Price > 0)
+                {
+                    foundMarket = mkt;
+                    break;
+                }
+
+                // 即使价格为0也可能是有效代码（停牌等），记下但不 break
+                if (results.Length > 0)
+                    foundMarket ??= mkt;
+            }
+            catch { /* 该市场查询失败，试下一个 */ }
         }
 
-        try
+        if (foundMarket.HasValue)
+            return (foundMarket.Value, codeOnly, StockCodeParser.NormalizeCode(foundMarket.Value, codeOnly), null);
+
+        // 4. 仅用 GetSecurityType 快速判断（无需行情连接）
+        foreach (var mkt in candidates)
         {
-            var markets = new[] { TdxConstants.MarketSZ, TdxConstants.MarketSH };
-            foreach (var mkt in markets)
+            try
             {
                 var type = TdxConstants.GetSecurityType(mkt, codeOnly);
                 if (type.EndsWith("_A_STOCK"))
-                {
                     return (mkt, codeOnly, StockCodeParser.NormalizeCode(mkt, codeOnly), null);
-                }
             }
+            catch { }
         }
-        catch { /* 查询失败，使用推断逻辑 */ }
 
-        // 最后回退：尝试深市
-        return (TdxConstants.MarketSZ, codeOnly, StockCodeParser.NormalizeCode(TdxConstants.MarketSZ, codeOnly),
-            $"代码 {input} 无法唯一确定交易所，请使用 sz/sh/bj 前缀指定。如: sz{codeOnly}");
+        return (0, "", "", $"代码 {input} 无法识别，请使用 sz/sh/bj 前缀指定交易所。如: sz{codeOnly}");
     }
 
     /// <summary>

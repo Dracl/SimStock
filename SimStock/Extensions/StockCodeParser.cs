@@ -20,8 +20,8 @@ public static class StockCodeParser
 
         input = input.Trim().ToLowerInvariant();
 
-        // 匹配: 可选2字母前缀 + 数字代码（至少4位，最多6位）
-        var match = System.Text.RegularExpressions.Regex.Match(input, @"^(sz|sh|bj)?(\d{4,6})$");
+        // 匹配: 可选2字母前缀 + 数字代码（1-6位）
+        var match = System.Text.RegularExpressions.Regex.Match(input, @"^(sz|sh|bj)?(\d{1,6})$");
         if (!match.Success)
         {
             return null;
@@ -48,36 +48,26 @@ public static class StockCodeParser
     }
 
     /// <summary>
-    /// 无前缀时根据代码段推断交易所。
-    /// 返回 null 表示无法推断（需要在两个市场都尝试）。
+    /// 无前缀时根据代码段推断交易所。支持短代码（如 "1" → sz000001）。
+    /// 返回 null 表示无法推断。
     /// </summary>
     public static (byte market, string code)? TryInferMarket(string code)
     {
-        if (code.Length < 4)
-        {
-            return null;
-        }
-
+        code = code.PadLeft(6, '0');
         var prefix = code[..2];
+        var prefix3 = code[..3];
 
-        // 60xxxx, 68xxxx → 沪市A股
-        // 00xxxx, 30xxxx → 深市A股
-        // 8xxxxx → 北交所
-        // 其他: 无法确定
+        // 沪市: 60xxxx, 601xxx, 603xxx, 605xxx, 688xxx(科创板)
         if (prefix == "60" || prefix == "68")
-        {
-            return (TdxConstants.MarketSH, code.PadLeft(6, '0'));
-        }
+            return (TdxConstants.MarketSH, code);
 
+        // 深市: 00xxxx, 30xxxx, 301xxx(创业板)
         if (prefix == "00" || prefix == "30")
-        {
-            return (TdxConstants.MarketSZ, code.PadLeft(6, '0'));
-        }
+            return (TdxConstants.MarketSZ, code);
 
-        if (prefix == "83" || prefix == "87" || prefix == "43" || prefix == "92")
-        {
-            return (TdxConstants.MarketBJ, code.PadLeft(6, '0'));
-        }
+        // 北交所: 83xxxx, 87xxxx, 43xxxx, 92xxxx
+        if (prefix is "83" or "87" or "43" or "92")
+            return (TdxConstants.MarketBJ, code);
 
         return null;
     }
