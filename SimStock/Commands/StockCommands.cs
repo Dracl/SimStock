@@ -65,12 +65,17 @@ public class StockCommands : CommandHandlerBase
             return EventHandleResult.Block;
         }
 
+        await AccountService.UpdateTotalAssetAsync(account.Id);
+        account = await AccountService.GetAccountAsync(qq, groupId); // 重新读取更新后的总资产
+
         var positions = await AccountService.GetPositionsAsync(account.Id);
         var pendingOrders = await Entry.Db!.Queryable<Models.Order>().CountAsync(o => o.AccountId == account.Id && o.Status == 0);
 
         var sb = new System.Text.StringBuilder();
+        var marketValue = account.TotalAsset - account.Balance;
         sb.AppendLine(isPrivate ? "💰 账户信息" : $"💰 账户信息 - QQ: {qq}");
         sb.AppendLine($"💵 可用余额: {account.Balance:N2} 元");
+        sb.AppendLine($"📦 持仓市值: {marketValue:N2} 元");
         sb.AppendLine($"📊 总资产: {account.TotalAsset:N2} 元");
         sb.AppendLine($"📅 注册时间: {account.CreatedAt:yyyy-MM-dd HH:mm}");
         if (positions.Count > 0)
@@ -504,13 +509,14 @@ public class StockCommands : CommandHandlerBase
 
     private static void AppendRankRows(System.Text.StringBuilder sb, List<Account> accounts, Dictionary<long, string> nameCache)
     {
-        sb.AppendLine($"{"排名",-4} {"昵称",-16} {"💰总资产",14}");
+        sb.AppendLine($"{"排名",-4} {"昵称",-12} {"💵可用余额",12} {"📦持仓市值",12} {"📊总资产",14}");
         for (int i = 0; i < accounts.Count; i++)
         {
             var a = accounts[i];
+            var marketValue = a.TotalAsset - a.Balance;
             var medal = i == 0 ? "🥇" : i == 1 ? "🥈" : i == 2 ? "🥉" : $"{i + 1}.";
             var name = nameCache.TryGetValue(a.QQ, out var n) ? n : a.QQ.ToString();
-            sb.AppendLine($"{medal,-4} {name,-14} {a.TotalAsset,14:N2}");
+            sb.AppendLine($"{medal,-4} {name,-10} {a.Balance,12:N0} {marketValue,12:N0} {a.TotalAsset,14:N0}");
         }
     }
 

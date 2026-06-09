@@ -112,7 +112,7 @@ public static class TradingService
                 await Db.Insertable(order).ExecuteReturnBigIdentityAsync();
                 await UpsertPositionAsync(account.Id, normalizedCode, quantity, price);
                 account.Balance -= totalCost;
-                account.TotalAsset = account.Balance;
+                await AccountService.UpdateTotalAssetAsync(account.Id);
                 account.UpdatedAt = DateTime.Now;
                 await Db.Updateable(account).ExecuteCommandAsync();
                 await Db.Insertable(new TradeRecord
@@ -238,7 +238,7 @@ public static class TradingService
                     await Db.Insertable(order).ExecuteReturnBigIdentityAsync();
                     await UpsertPositionAsync(account.Id, normalizedCode, quantity, execPrice);
                     account.Balance -= totalCost;
-                    account.TotalAsset = account.Balance;
+                    await AccountService.UpdateTotalAssetAsync(account.Id);
                     account.UpdatedAt = DateTime.Now;
                     await Db.Updateable(account).ExecuteCommandAsync();
                     await Db.Insertable(new TradeRecord
@@ -377,7 +377,7 @@ public static class TradingService
                 await Db.Insertable(order).ExecuteReturnBigIdentityAsync();
                 await DeductPositionAsync(account.Id, normalizedCode, quantity);
                 account.Balance += totalCredit;
-                account.TotalAsset = account.Balance;
+                await AccountService.UpdateTotalAssetAsync(account.Id);
                 account.UpdatedAt = DateTime.Now;
                 await Db.Updateable(account).ExecuteCommandAsync();
                 await Db.Insertable(new TradeRecord
@@ -502,7 +502,7 @@ public static class TradingService
                     await Db.Insertable(order).ExecuteReturnBigIdentityAsync();
                     await DeductPositionAsync(account.Id, normalizedCode, quantity);
                     account.Balance += totalCredit;
-                    account.TotalAsset = account.Balance;
+                    await AccountService.UpdateTotalAssetAsync(account.Id);
                     account.UpdatedAt = DateTime.Now;
                     await Db.Updateable(account).ExecuteCommandAsync();
                     await Db.Insertable(new TradeRecord
@@ -615,7 +615,7 @@ public static class TradingService
                     await UpsertPositionAsync(account.Id, freshOrder.StockCode, freshOrder.Quantity, executionPrice);
 
                     account.Balance -= totalCost;
-                    account.TotalAsset = account.Balance;
+                    await AccountService.UpdateTotalAssetAsync(account.Id);
                     account.UpdatedAt = DateTime.Now;
                     await Db.Updateable(account).ExecuteCommandAsync();
 
@@ -646,7 +646,7 @@ public static class TradingService
                     await DeductPositionAsync(account.Id, freshOrder.StockCode, freshOrder.Quantity);
 
                     account.Balance += totalCredit;
-                    account.TotalAsset = account.Balance;
+                    await AccountService.UpdateTotalAssetAsync(account.Id);
                     account.UpdatedAt = DateTime.Now;
                     await Db.Updateable(account).ExecuteCommandAsync();
 
