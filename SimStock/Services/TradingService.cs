@@ -109,7 +109,7 @@ public static class TradingService
 
             await Db.UseTranAsync(async () =>
             {
-                await Db.Insertable(order).ExecuteReturnBigIdentityAsync();
+                order.Id = await Db.Insertable(order).ExecuteReturnBigIdentityAsync();
                 await UpsertPositionAsync(account.Id, normalizedCode, quantity, price);
                 account.Balance -= totalCost;
                 await AccountService.UpdateTotalAssetAsync(account.Id);
@@ -235,7 +235,7 @@ public static class TradingService
 
                 await Db.UseTranAsync(async () =>
                 {
-                    await Db.Insertable(order).ExecuteReturnBigIdentityAsync();
+                    order.Id = await Db.Insertable(order).ExecuteReturnBigIdentityAsync();
                     await UpsertPositionAsync(account.Id, normalizedCode, quantity, execPrice);
                     account.Balance -= totalCost;
                     await AccountService.UpdateTotalAssetAsync(account.Id);
@@ -271,7 +271,7 @@ public static class TradingService
                     CreatedAt = DateTime.Now,
                     UpdatedAt = DateTime.Now
                 };
-                await Db.Insertable(order).ExecuteReturnBigIdentityAsync();
+                order.Id = await Db.Insertable(order).ExecuteReturnBigIdentityAsync();
                 return (null, null, null, order.Id);
             }
         }
@@ -374,7 +374,7 @@ public static class TradingService
 
             await Db.UseTranAsync(async () =>
             {
-                await Db.Insertable(order).ExecuteReturnBigIdentityAsync();
+                order.Id = await Db.Insertable(order).ExecuteReturnBigIdentityAsync();
                 await DeductPositionAsync(account.Id, normalizedCode, quantity);
                 account.Balance += totalCredit;
                 await AccountService.UpdateTotalAssetAsync(account.Id);
@@ -499,7 +499,7 @@ public static class TradingService
 
                 await Db.UseTranAsync(async () =>
                 {
-                    await Db.Insertable(order).ExecuteReturnBigIdentityAsync();
+                    order.Id = await Db.Insertable(order).ExecuteReturnBigIdentityAsync();
                     await DeductPositionAsync(account.Id, normalizedCode, quantity);
                     account.Balance += totalCredit;
                     await AccountService.UpdateTotalAssetAsync(account.Id);
@@ -535,7 +535,7 @@ public static class TradingService
                     CreatedAt = DateTime.Now,
                     UpdatedAt = DateTime.Now
                 };
-                await Db.Insertable(order).ExecuteReturnBigIdentityAsync();
+                order.Id = await Db.Insertable(order).ExecuteReturnBigIdentityAsync();
                 return (null, null, null, order.Id);
             }
         }
