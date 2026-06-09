@@ -301,9 +301,6 @@ public class StockCommands : CommandHandlerBase
             return EventHandleResult.Block;
         }
 
-        var (th, err) = SafetyChecker.CheckTradingHours();
-        if (!th) { await SendAsync(g, p, err!); return EventHandleResult.Block; }
-
         var (account, err2) = await SafetyChecker.RequireAccountAsync(Entry.Db!, qq, groupId);
         if (account == null) { await SendAsync(g, p, err2!); return EventHandleResult.Block; }
 
@@ -338,9 +335,6 @@ public class StockCommands : CommandHandlerBase
         {
             return EventHandleResult.Block;
         }
-
-        var (th, err) = SafetyChecker.CheckTradingHours();
-        if (!th) { await SendAsync(g, p, err!); return EventHandleResult.Block; }
 
         var (account, err2) = await SafetyChecker.RequireAccountAsync(Entry.Db!, qq, groupId);
         if (account == null) { await SendAsync(g, p, err2!); return EventHandleResult.Block; }
