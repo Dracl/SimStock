@@ -1,3 +1,5 @@
+using Another_Mirai_Native.Abstractions.Models;
+
 namespace SimStock;
 
 /// <summary>
@@ -209,7 +211,7 @@ public class MatchingEngine : IDisposable
 
                                 if (order.SourceGroupId.HasValue)
                                 {
-                                    await Entry.Api.MessageApi.SendGroupMessageAsync(order.SourceGroupId.Value, msg);
+                                    await SendGroupNotificationAsync(order, msg, account.QQ);
                                 }
                                 else
                                 {
@@ -313,7 +315,12 @@ public class MatchingEngine : IDisposable
 
                     foreach (var (order, qq) in orders)
                     {
-                        sb.AppendLine($"  · {(nameCache.TryGetValue(qq, out var n) ? n : qq.ToString())} {StockCodeParser.ToDisplayCode(order.StockCode)} {order.OrderType switch { 1 => "买入", 3 => "卖出", _ => "?" }} {order.Quantity}股 @{order.Price:F2}");
+                        var name = nameCache.TryGetValue(qq, out var n) ? n : qq.ToString();
+                        var dir = order.OrderType switch { 1 => "买入", 3 => "卖出", _ => "?" };
+                        sb.AppendLine($"  · {name}");
+                        sb.AppendLine($"    📋 {StockCodeParser.ToDisplayCode(order.StockCode)}");
+                        sb.AppendLine($"    📌 {dir} {order.Quantity} 股");
+                        sb.AppendLine($"    💲 委托价: {order.Price:F2}");
                     }
 
                     await Entry.Api.MessageApi.SendGroupMessageAsync(sourceGroupId, sb.ToString());
@@ -326,14 +333,54 @@ public class MatchingEngine : IDisposable
             {
                 try
                 {
+                    var dir = order.OrderType switch { 1 => "买入", 3 => "卖出", _ => "?" };
                     var msg = $"🌙 本日已休市，挂单自动取消：\n" +
-                              $"  · {StockCodeParser.ToDisplayCode(order.StockCode)} {order.OrderType switch { 1 => "买入", 3 => "卖出", _ => "?" }} {order.Quantity}股 @{order.Price:F2}";
+                              $"📋 {StockCodeParser.ToDisplayCode(order.StockCode)}\n" +
+                              $"📌 {dir} {order.Quantity} 股\n" +
+                              $"💲 委托价: {order.Price:F2}";
                     await Entry.Api.MessageApi.SendPrivateMessageAsync(qq, msg);
                 }
                 catch { /* 发送失败不影响 */ }
             }
         }
         catch { /* 撤单失败不影响主循环 */ }
+    }
+
+    /// <summary>
+    /// 群聊成交通知：优先引用原始挂单消息回复，找不到时 @用户
+    /// </summary>
+    private static async Task SendGroupNotificationAsync(Models.Order order, string msg, long qq)
+    {
+        try
+        {
+            if (order.SourceMessageId.HasValue)
+            {
+                var mb = new MessageBuilder();
+                mb.Items.Add(new Another_Mirai_Native.Abstractions.Models.MessageItem.Reply(order.SourceMessageId.Value));
+                mb.Text(msg);
+                await Entry.Api.MessageApi.SendGroupMessageAsync(order.SourceGroupId!.Value, mb.Build());
+            }
+            else
+            {
+                // 没有原始消息ID，@用户
+                var mb = new MessageBuilder();
+                mb.At(qq);
+                mb.Text(msg);
+                await Entry.Api.MessageApi.SendGroupMessageAsync(order.SourceGroupId!.Value, mb.Build());
+            }
+        }
+        catch
+        {
+            // 引用回复失败（消息可能被删除），回退到 @用户
+            try
+            {
+                var mb = new MessageBuilder();
+                mb.At(qq);
+                mb.Text(msg);
+                await Entry.Api.MessageApi.SendGroupMessageAsync(order.SourceGroupId!.Value, mb.Build());
+            }
+            catch { /* 最终失败放弃 */ }
+        }
     }
 
     public void Dispose()

@@ -135,7 +135,7 @@ public static class TradingService
 
     // === 限价买入 ===
     public static async Task<(Order? order, string? error, decimal? fee, long? pendingOrderId)> LimitBuyAsync(
-        long qq, long groupId, string normalizedCode, int quantity, decimal price, long? sourceGroupId = null)
+        long qq, long groupId, string normalizedCode, int quantity, decimal price, long? sourceGroupId = null, int? sourceMessageId = null)
     {
         var (account, err) = await SafetyChecker.RequireAccountAsync(Db, qq, groupId);
         if (account == null)
@@ -223,6 +223,7 @@ public static class TradingService
                 {
                     AccountId = account.Id,
                     SourceGroupId = sourceGroupId,
+                    SourceMessageId = sourceMessageId,
                     StockCode = normalizedCode,
                     OrderType = 1,
                     Quantity = quantity,
@@ -262,6 +263,7 @@ public static class TradingService
                 {
                     AccountId = account.Id,
                     SourceGroupId = sourceGroupId,
+                    SourceMessageId = sourceMessageId,
                     StockCode = normalizedCode,
                     OrderType = 1,
                     Quantity = quantity,
@@ -400,7 +402,7 @@ public static class TradingService
 
     // === 限价卖出 ===
     public static async Task<(Order? order, string? error, decimal? fee, long? pendingOrderId)> LimitSellAsync(
-        long qq, long groupId, string normalizedCode, int quantity, decimal price, long? sourceGroupId = null)
+        long qq, long groupId, string normalizedCode, int quantity, decimal price, long? sourceGroupId = null, int? sourceMessageId = null)
     {
         var (account, err) = await SafetyChecker.RequireAccountAsync(Db, qq, groupId);
         if (account == null)
@@ -487,6 +489,7 @@ public static class TradingService
                 {
                     AccountId = account.Id,
                     SourceGroupId = sourceGroupId,
+                    SourceMessageId = sourceMessageId,
                     StockCode = normalizedCode,
                     OrderType = 3,
                     Quantity = quantity,
@@ -526,6 +529,7 @@ public static class TradingService
                 {
                     AccountId = account.Id,
                     SourceGroupId = sourceGroupId,
+                    SourceMessageId = sourceMessageId,
                     StockCode = normalizedCode,
                     OrderType = 3,
                     Quantity = quantity,

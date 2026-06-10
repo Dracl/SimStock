@@ -2,7 +2,6 @@ using Another_Mirai_Native.Abstractions;
 using Another_Mirai_Native.Abstractions.Attributes;
 using Another_Mirai_Native.Abstractions.Context;
 using Another_Mirai_Native.Abstractions.Enums;
-using Another_Mirai_Native.Abstractions.Models;
 using SimStock.Models;
 
 namespace SimStock;
@@ -80,9 +79,13 @@ public class StockCommands : CommandHandlerBase
         sb.AppendLine($"📅 注册时间: {account.CreatedAt:yyyy-MM-dd HH:mm}");
         if (positions.Count > 0)
         {
-            sb.AppendLine(); sb.AppendLine("📦 --- 持仓 ---"); foreach (var pos in positions)
+            sb.AppendLine();
+            sb.AppendLine("📦 --- 持仓 ---");
+            foreach (var pos in positions)
             {
-                sb.AppendLine($"  {StockCodeParser.ToDisplayCode(pos.StockCode)}  数量:{pos.Quantity}  均价:{pos.AvgCost:F2}");
+                sb.AppendLine($"📋 {StockCodeParser.ToDisplayCode(pos.StockCode)}");
+                sb.AppendLine($"   数量: {pos.Quantity} 股");
+                sb.AppendLine($"   均价: {pos.AvgCost:F2}");
             }
         }
         else
@@ -111,7 +114,7 @@ public class StockCommands : CommandHandlerBase
         var (success, err3) = await AdminService.AddAdminAsync(e.FromGroup.Id, qq);
         if (!success) { await e.SendMessageAsync(err3!); return EventHandleResult.Block; }
 
-        await e.SendMessageAsync(new MessageBuilder().At(e.FromQQ.Id).Text($" 已将 QQ({qq}) 设为本群插件管理员").Build());
+        e.Reply($"已将 QQ({qq}) 设为本群插件管理员");
         return EventHandleResult.Block;
     }
 
@@ -154,7 +157,7 @@ public class StockCommands : CommandHandlerBase
         var (success, err3) = await AdminService.RemoveAdminAsync(e.FromGroup.Id, qq);
         if (!success) { await e.SendMessageAsync(err3!); return EventHandleResult.Block; }
 
-        await e.SendMessageAsync(new MessageBuilder().At(e.FromQQ.Id).Text($" 已移除 QQ({qq}) 的本群插件管理员权限").Build());
+        e.Reply($"已移除 QQ({qq}) 的本群插件管理员权限");
         return EventHandleResult.Block;
     }
 
@@ -182,7 +185,8 @@ public class StockCommands : CommandHandlerBase
 
         var quote = await Entry.Quotes!.GetQuoteAsync(market, resolvedCode);
         var price = quote != null ? (decimal)quote.Ask1 : 0;
-        await SendAsync(g, p, $" ✅ 市价买入成功！\n股票: {StockCodeParser.ToDisplayCode(normalized)}\n数量: {qty} 股\n成交价: {price:F2} 元\n金额: {price * qty:F2} 元\n手续费: {fee:F2} 元");
+        var stockName = await Entry.StockNames.GetNameAsync(normalized);
+        await SendAsync(g, p, $" ✅ 市价买入成功！\n股票: {StockCodeParser.ToDisplayCode(normalized)} {stockName}\n数量: {qty} 股\n成交价: {price:F2} 元\n金额: {price * qty:F2} 元\n手续费: {fee:F2} 元");
         return EventHandleResult.Block;
     }
 
@@ -284,11 +288,15 @@ public class StockCommands : CommandHandlerBase
 
         var sb = new System.Text.StringBuilder();
         sb.AppendLine("📜 === 最近交易记录 ===");
-        sb.AppendLine($"{"⏰时间",-20} {"📌方向",6} {"📋代码",-10} {"📦数量",8} {"💲价格",10} {"💰金额",12}");
         foreach (var t in trades)
         {
-            var dir = t.TradeType == 0 ? "🔴买" : "🟢卖";
-            sb.AppendLine($"{t.TradedAt:yyyy-MM-dd HH:mm}  {dir}  {StockCodeParser.ToDisplayCode(t.StockCode),-8} {t.Quantity,6} {t.Price,8:F2} {t.Amount,10:F2}");
+            var dir = t.TradeType == 0 ? "🔴买入" : "🟢卖出";
+            sb.AppendLine($"⏰ {t.TradedAt:yyyy-MM-dd HH:mm}");
+            sb.AppendLine($"   {dir} {StockCodeParser.ToDisplayCode(t.StockCode)}");
+            sb.AppendLine($"   数量: {t.Quantity} 股");
+            sb.AppendLine($"   价格: {t.Price:F2}");
+            sb.AppendLine($"   金额: {t.Amount:F2}");
+            sb.AppendLine();
         }
         await SendAsync(g, p, sb.ToString());
         return EventHandleResult.Block;
@@ -312,7 +320,8 @@ public class StockCommands : CommandHandlerBase
         var (market, resolvedCode, normalized, resolveErr) = await Entry.Quotes!.ResolveCodeAsync(code);
         if (resolveErr != null && market == 0) { await SendAsync(g, p, resolveErr); return EventHandleResult.Block; }
 
-        var (order, err3, fee, pendingId) = await TradingService.LimitBuyAsync(qq, groupId, normalized, qty, price, sourceGroupId);
+        var sourceMsgId = g?.Message.Id ?? p?.Message.Id;
+        var (order, err3, fee, pendingId) = await TradingService.LimitBuyAsync(qq, groupId, normalized, qty, price, sourceGroupId, sourceMsgId);
         if (err3 != null) { await SendAsync(g, p, err3); return EventHandleResult.Block; }
 
         var quote = await Entry.Quotes!.GetQuoteAsync(market, resolvedCode);
@@ -347,7 +356,8 @@ public class StockCommands : CommandHandlerBase
         var (market, resolvedCode, normalized, resolveErr) = await Entry.Quotes!.ResolveCodeAsync(code);
         if (resolveErr != null && market == 0) { await SendAsync(g, p, resolveErr); return EventHandleResult.Block; }
 
-        var (order, err3, fee, pendingId) = await TradingService.LimitSellAsync(qq, groupId, normalized, qty, price, sourceGroupId);
+        var sourceMsgId = g?.Message.Id ?? p?.Message.Id;
+        var (order, err3, fee, pendingId) = await TradingService.LimitSellAsync(qq, groupId, normalized, qty, price, sourceGroupId, sourceMsgId);
         if (err3 != null) { await SendAsync(g, p, err3); return EventHandleResult.Block; }
 
         var quote = await Entry.Quotes!.GetQuoteAsync(market, resolvedCode);
@@ -389,10 +399,15 @@ public class StockCommands : CommandHandlerBase
 
         var sb = new System.Text.StringBuilder();
         sb.AppendLine($"📈 {name}{typeTag} {StockCodeParser.ToDisplayCode(normalized)} 实时行情");
-        sb.AppendLine($"💹 现价: {quote.Price:F2}  昨收: {quote.LastClose:F2}  {changeEmoji} {changeSign}{changePct:F2}%");
-        sb.AppendLine($"🔴 买一: {quote.Bid1:F2}  🟢 卖一: {quote.Ask1:F2}");
-        sb.AppendLine($"📊 最高: {quote.High:F2}  最低: {quote.Low:F2}");
-        sb.AppendLine($"📦 成交量: {quote.Vol:F0}  成交额: {quote.Amount:F0}");
+        sb.AppendLine($"💹 现价: {quote.Price:F2}");
+        sb.AppendLine($"📅 昨收: {quote.LastClose:F2}");
+        sb.AppendLine($"📊 涨跌: {changeEmoji} {changeSign}{changePct:F2}%");
+        sb.AppendLine($"🔴 买一: {quote.Bid1:F2}");
+        sb.AppendLine($"🟢 卖一: {quote.Ask1:F2}");
+        sb.AppendLine($"📈 最高: {quote.High:F2}");
+        sb.AppendLine($"📉 最低: {quote.Low:F2}");
+        sb.AppendLine($"📦 成交量: {quote.Vol:F0}");
+        sb.AppendLine($"💰 成交额: {quote.Amount:F0}");
         await SendAsync(g, p, sb.ToString());
         return EventHandleResult.Block;
     }
@@ -509,14 +524,17 @@ public class StockCommands : CommandHandlerBase
 
     private static void AppendRankRows(System.Text.StringBuilder sb, List<Account> accounts, Dictionary<long, string> nameCache)
     {
-        sb.AppendLine($"{"排名",-4} {"昵称",-12} {"💵可用余额",12} {"📦持仓市值",12} {"📊总资产",14}");
         for (int i = 0; i < accounts.Count; i++)
         {
             var a = accounts[i];
             var marketValue = a.TotalAsset - a.Balance;
             var medal = i == 0 ? "🥇" : i == 1 ? "🥈" : i == 2 ? "🥉" : $"{i + 1}.";
             var name = nameCache.TryGetValue(a.QQ, out var n) ? n : a.QQ.ToString();
-            sb.AppendLine($"{medal,-4} {name,-10} {a.Balance,12:N0} {marketValue,12:N0} {a.TotalAsset,14:N0}");
+            sb.AppendLine($"{medal} {name}");
+            sb.AppendLine($"   💵 可用余额: {a.Balance:N0}");
+            sb.AppendLine($"   📦 持仓市值: {marketValue:N0}");
+            sb.AppendLine($"   📊 总资产: {a.TotalAsset:N0}");
+            sb.AppendLine();
         }
     }
 
@@ -639,16 +657,20 @@ public class StockCommands : CommandHandlerBase
     }
 
     /// <summary>
-    /// 向来源发送消息：群聊时 @发送者，私聊时直接发送
+    /// 向来源回复消息：群聊和私聊均引用原消息回复
     /// </summary>
     private static Task SendAsync(GroupMessageContext? g, PrivateMessageContext? p, string msg)
     {
         if (g != null)
         {
-            return g.SendMessageAsync(new MessageBuilder().At(g.FromQQ.Id).Text(msg).Build());
+            g.Reply(msg);
+        }
+        else
+        {
+            p!.Reply(msg);
         }
 
-        return p!.SendMessageAsync(msg);
+        return Task.CompletedTask;
     }
 
     // ==================== 辅助方法 ====================

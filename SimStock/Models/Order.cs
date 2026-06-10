@@ -16,6 +16,10 @@ public class Order
     [SugarColumn(IsNullable = true)]
     public long? SourceGroupId { get; set; }
 
+    /// <summary>原始消息ID，用于撮合成功后引用回复</summary>
+    [SugarColumn(IsNullable = true)]
+    public int? SourceMessageId { get; set; }
+
     /// <summary>0=市价买 1=限价买 2=市价卖 3=限价卖</summary>
     public int OrderType { get; set; }
 
