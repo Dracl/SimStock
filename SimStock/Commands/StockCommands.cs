@@ -235,7 +235,7 @@ public class StockCommands : CommandHandlerBase
         var quote = await Entry.Quotes!.GetQuoteAsync(market, resolvedCode);
         var price = quote != null ? (decimal)quote.Ask1 : 0;
         var stockName = await Entry.StockNames.GetNameAsync(normalized);
-        await SendAsync(g, p, $" ✅ 市价买入成功！\n股票: {StockCodeParser.ToDisplayCode(normalized)} {stockName}\n数量: {qty} 股\n成交价: {price:F2} 元\n金额: {price * qty:F2} 元\n手续费: {fee:F2} 元");
+        await SendAsync(g, p, $" ✅ 市价买入成功！\n股票: {StockCodeParser.ToDisplayCode(normalized)} {stockName}\n数量: {qty} 股\n成交价: {price:F2} 元\n金额: {price * qty:N2} 元\n手续费: {fee:F2} 元");
         return EventHandleResult.Block;
     }
 
@@ -344,7 +344,7 @@ public class StockCommands : CommandHandlerBase
             sb.AppendLine($"   {dir} {StockCodeParser.ToDisplayCode(t.StockCode)}");
             sb.AppendLine($"   数量: {t.Quantity} 股");
             sb.AppendLine($"   价格: {t.Price:F2}");
-            sb.AppendLine($"   金额: {t.Amount:F2}");
+            sb.AppendLine($"   金额: {t.Amount:N2}");
             sb.AppendLine();
         }
         await SendAsync(g, p, sb.ToString());
@@ -549,7 +549,7 @@ public class StockCommands : CommandHandlerBase
         var quote = await Entry.Quotes!.GetQuoteAsync(market, resolvedCode);
         var price = quote != null ? (decimal)quote.Bid1 : 0;
         var stockName = await Entry.StockNames.GetNameAsync(normalized);
-        await SendAsync(g, p, $" ✅ 市价卖出成功！\n股票: {StockCodeParser.ToDisplayCode(normalized)} {stockName}\n数量: {qty} 股\n成交价: {price:F2} 元\n金额: {price * qty:F2} 元\n手续费: {fee:F2} 元");
+        await SendAsync(g, p, $" ✅ 市价卖出成功！\n股票: {StockCodeParser.ToDisplayCode(normalized)} {stockName}\n数量: {qty} 股\n成交价: {price:F2} 元\n金额: {price * qty:N2} 元\n手续费: {fee:F2} 元");
         return EventHandleResult.Block;
     }
 

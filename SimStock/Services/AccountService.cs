@@ -74,7 +74,7 @@ public static class AccountService
 
         if (amount > account.Balance)
         {
-            return (false, $"出金失败，可用余额 {account.Balance:F2} 元，不足 {amount:F2} 元");
+            return (false, $"出金失败，可用余额 {account.Balance:N2} 元，不足 {amount:N2} 元");
         }
 
         account.Balance -= amount;

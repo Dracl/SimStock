@@ -207,7 +207,7 @@ public class MatchingEngine : IDisposable
                                           $"📦 数量: {order.Quantity} 股\n" +
                                           $"💲 成交价: {execPrice:F2} 元\n" +
                                           $"🧾 手续费: {fee:F2} 元\n" +
-                                          $"💰 金额: {execPrice * order.Quantity:F2} 元\n" +
+                                          $"💰 金额: {execPrice * order.Quantity:N2} 元\n" +
                                           $"⏰ 时间: {DateTime.Now:yyyy-MM-dd HH:mm:ss}";
 
                                 if (order.SourceGroupId.HasValue)
