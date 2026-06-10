@@ -38,6 +38,8 @@ public class ConfigService
         ["LimitBuy"] = "/限价买入",
         ["Sell"] = "/卖出股票",
         ["LimitSell"] = "/限价卖出",
+        ["AllIn"] = "/梭哈",
+        ["LimitAllIn"] = "/限价梭哈",
         ["Cancel"] = "/股票撤单",
         ["Rank"] = "/股票排行",
         ["GlobalRank"] = "/全局排行",
@@ -58,6 +60,8 @@ public class ConfigService
         ["LimitBuy"] = @"\s+(?<code>\w{2,8})\s+(?<qty>\d+)\s+(?<price>\d+(\.\d+)?)",
         ["Sell"] = @"\s+(?<code>\w{2,8})\s+(?<qty>\d+)",
         ["LimitSell"] = @"\s+(?<code>\w{2,8})\s+(?<qty>\d+)\s+(?<price>\d+(\.\d+)?)",
+        ["AllIn"] = @"\s+(?<code>\w{2,8})",
+        ["LimitAllIn"] = @"\s+(?<code>\w{2,8})\s+(?<price>\d+(\.\d+)?)",
         ["Cancel"] = @"\s+(?<orderId>\d+)",
     };
 

@@ -18,6 +18,8 @@ public class StockCommands : CommandHandlerBase
 
     public string AdminRemoveCmd => Entry.Config.GetCommandTemplate("AdminRemove");
 
+    public string AllInCmd => Entry.Config.GetCommandTemplate("AllIn");
+
     public string BuyCmd => Entry.Config.GetCommandTemplate("Buy");
 
     public string CancelCmd => Entry.Config.GetCommandTemplate("Cancel");
@@ -29,6 +31,8 @@ public class StockCommands : CommandHandlerBase
     public string HelpCmd => Entry.Config.GetCommandTemplate("Help");
 
     public string HistoryCmd => Entry.Config.GetCommandTemplate("History");
+
+    public string LimitAllInCmd => Entry.Config.GetCommandTemplate("LimitAllIn");
 
     public string LimitBuyCmd => Entry.Config.GetCommandTemplate("LimitBuy");
 
@@ -239,6 +243,48 @@ public class StockCommands : CommandHandlerBase
         return EventHandleResult.Block;
     }
 
+    [DynamicCommand(nameof(AllInCmd), MatchMode.Regex)]
+    public async Task<EventHandleResult> CmdAllIn(GroupMessageContext? g, PrivateMessageContext? p, string code)
+    {
+        var qq = GetQQ(g, p);
+        var (groupId, sourceGroupId, _) = ResolveCtx(g, p);
+        if (!await CheckAccess(g, p, qq))
+        {
+            return EventHandleResult.Block;
+        }
+
+        var (th, err) = SafetyChecker.CheckTradingHours();
+        if (!th) { await SendAsync(g, p, err!); return EventHandleResult.Block; }
+
+        var (account, err2) = await SafetyChecker.RequireAccountAsync(Entry.Db!, qq, groupId);
+        if (account == null) { await SendAsync(g, p, err2!); return EventHandleResult.Block; }
+
+        var (market, resolvedCode, normalized, resolveErr) = await Entry.Quotes!.ResolveCodeAsync(code);
+        if (resolveErr != null && market == 0) { await SendAsync(g, p, resolveErr); return EventHandleResult.Block; }
+
+        var quote = await Entry.Quotes!.GetQuoteAsync(market, resolvedCode);
+        if (quote == null) { await SendAsync(g, p, "行情获取失败"); return EventHandleResult.Block; }
+
+        var check = SafetyChecker.CheckSuspension(quote.Bid1, quote.Ask1);
+        if (!check.passed) { await SendAsync(g, p, check.error!); return EventHandleResult.Block; }
+
+        check = SafetyChecker.CheckPriceLimit(quote.LastClose, quote.Price, isBuy: true);
+        if (!check.passed) { await SendAsync(g, p, check.error!); return EventHandleResult.Block; }
+
+        if (quote.Ask1 <= 0) { await SendAsync(g, p, "该股票当前无卖盘，无法买入"); return EventHandleResult.Block; }
+
+        var price = (decimal)quote.Ask1;
+        var qty = CalcAllInQty(account.Balance, price);
+        if (qty < 100) { await SendAsync(g, p, $"可用余额 {account.Balance:N2} 不足以购买 1 手（需 ≈{price * 100 * 1.0003m:N2} 元）"); return EventHandleResult.Block; }
+
+        var (order, err3, fee) = await TradingService.MarketBuyAsync(qq, groupId, normalized, qty, sourceGroupId);
+        if (err3 != null) { await SendAsync(g, p, err3); return EventHandleResult.Block; }
+
+        var stockName = await Entry.StockNames.GetNameAsync(normalized);
+        await SendAsync(g, p, $" 🥳 梭哈买入成功！\n股票: {StockCodeParser.ToDisplayCode(normalized)} {stockName}\n数量: {qty} 股\n成交价: {price:F2} 元\n金额: {price * qty:N2} 元\n手续费: {fee:F2} 元");
+        return EventHandleResult.Block;
+    }
+
     [DynamicCommand(nameof(CancelCmd), MatchMode.Regex)]
     public async Task<EventHandleResult> CmdCancel(GroupMessageContext? g, PrivateMessageContext? p, long orderId)
     {
@@ -384,6 +430,47 @@ public class StockCommands : CommandHandlerBase
         else
         {
             await SendAsync(g, p, $" 📝 限价买单已挂出！\n订单号: {pendingId ?? 0}\n股票: {StockCodeParser.ToDisplayCode(normalized)} {stockName}\n数量: {qty} 股\n委托价: {price:F2} 元\n当前卖一: {currentAsk:F2} 元\n⏳ 当卖一价 ≤ {price:F2} 时自动成交");
+        }
+
+        return EventHandleResult.Block;
+    }
+
+    [DynamicCommand(nameof(LimitAllInCmd), MatchMode.Regex)]
+    public async Task<EventHandleResult> CmdLimitAllIn(GroupMessageContext? g, PrivateMessageContext? p, string code, decimal price)
+    {
+        price = Math.Round(price, 2);
+        var qq = GetQQ(g, p);
+        var (groupId, sourceGroupId, _) = ResolveCtx(g, p);
+        if (!await CheckAccess(g, p, qq))
+        {
+            return EventHandleResult.Block;
+        }
+
+        var (account, err2) = await SafetyChecker.RequireAccountAsync(Entry.Db!, qq, groupId);
+        if (account == null) { await SendAsync(g, p, err2!); return EventHandleResult.Block; }
+
+        var (market, resolvedCode, normalized, resolveErr) = await Entry.Quotes!.ResolveCodeAsync(code);
+        if (resolveErr != null && market == 0) { await SendAsync(g, p, resolveErr); return EventHandleResult.Block; }
+
+        // 计算最大可买数量
+        var qty = CalcAllInQty(account.Balance, price);
+        if (qty < 100) { await SendAsync(g, p, $"可用余额 {account.Balance:N2} 不足以购买 1 手（委托价 {price:F2}，需 ≈{price * 100 * 1.0003m:N2} 元）"); return EventHandleResult.Block; }
+
+        var sourceMsgId = g?.Message.Id ?? p?.Message.Id;
+        var (order, err3, fee, pendingId) = await TradingService.LimitBuyAsync(qq, groupId, normalized, qty, price, sourceGroupId, sourceMsgId);
+        if (err3 != null) { await SendAsync(g, p, err3); return EventHandleResult.Block; }
+
+        var quote = await Entry.Quotes!.GetQuoteAsync(market, resolvedCode);
+        var currentAsk = quote?.Ask1 ?? 0;
+        var stockName = await Entry.StockNames.GetNameAsync(normalized);
+
+        if (fee.HasValue)
+        {
+            await SendAsync(g, p, $" 🥳 限价梭哈已立即成交！\n股票: {StockCodeParser.ToDisplayCode(normalized)} {stockName}\n数量: {qty} 股\n成交价: {currentAsk:F2} 元\n手续费: {fee:F2} 元");
+        }
+        else
+        {
+            await SendAsync(g, p, $" 🤯 限价梭哈单已挂出！\n订单号: {pendingId ?? 0}\n股票: {StockCodeParser.ToDisplayCode(normalized)} {stockName}\n数量: {qty} 股\n委托价: {price:F2} 元\n当前卖一: {currentAsk:F2} 元\n⏳ 当卖一价 ≤ {price:F2} 时自动成交");
         }
 
         return EventHandleResult.Block;
@@ -622,6 +709,8 @@ public class StockCommands : CommandHandlerBase
             💹 【交易操作】
             {t("Buy")} 代码 数量 市价买入
             {t("Sell")} 代码 数量 市价卖出
+            {t("AllIn")} 代码     梭哈买入（余额全仓）
+            {t("LimitAllIn")} 代码 价格  限价梭哈（余额全仓）
             {t("LimitBuy")} 代码 数量 价格  挂限价买单
             {t("LimitSell")} 代码 数量 价格  挂限价卖单
             {t("Cancel")} 订单号   撤销挂单
@@ -726,4 +815,27 @@ public class StockCommands : CommandHandlerBase
     }
 
     // ==================== 辅助方法 ====================
+
+    /// <summary>
+    /// 计算梭哈最大可买数量：余额 ÷ (单价 × 1.0003) 向下取整到 100 的倍数，预留手续费
+    /// </summary>
+    private static int CalcAllInQty(decimal balance, decimal price)
+    {
+        if (price <= 0 || balance <= 0) return 0;
+
+        // 初始估算：按百分比费率
+        var qty = (int)(balance / (price * 1.0003m) / 100) * 100;
+        if (qty < 100) return 0;
+
+        // 验证实际费用，超出则递减
+        while (qty >= 100)
+        {
+            var amount = price * qty;
+            var fee = SafetyChecker.CalcFee(amount);
+            if (amount + fee <= balance) break;
+            qty -= 100;
+        }
+
+        return qty;
+    }
 }
