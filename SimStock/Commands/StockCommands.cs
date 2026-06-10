@@ -70,22 +70,71 @@ public class StockCommands : CommandHandlerBase
         var positions = await AccountService.GetPositionsAsync(account.Id);
         var pendingOrders = await Entry.Db!.Queryable<Models.Order>().CountAsync(o => o.AccountId == account.Id && o.Status == 0);
 
-        var sb = new System.Text.StringBuilder();
-        var marketValue = account.TotalAsset - account.Balance;
-        sb.AppendLine(isPrivate ? "💰 账户信息" : $"💰 账户信息 - QQ: {qq}");
-        sb.AppendLine($"💵 可用余额: {account.Balance:N2} 元");
-        sb.AppendLine($"📦 持仓市值: {marketValue:N2} 元");
-        sb.AppendLine($"📊 总资产: {account.TotalAsset:N2} 元");
-        sb.AppendLine($"📅 注册时间: {account.CreatedAt:yyyy-MM-dd HH:mm}");
+        // 批量获取持仓股票行情（用于计算市值和占比）
+        Dictionary<string, TdxProtocol.Models.QuoteResult>? quotes = null;
         if (positions.Count > 0)
         {
+            var stockList = positions
+                .Select(p => StockCodeParser.ParseNormalized(p.StockCode))
+                .Where(p => p.HasValue)
+                .Select(p => (p.Value.market, p.Value.code))
+                .Distinct()
+                .ToList();
+            await Entry.ConnMgr!.EnsureConnectedAsync();
+            quotes = await Entry.Quotes!.GetQuotesBatchAsync(stockList);
+        }
+
+        var names = positions.Count > 0
+            ? await Entry.StockNames.GetNamesAsync(positions.Select(p => p.StockCode))
+            : [];
+
+        // 计算持仓市值
+        decimal totalMarketValue = 0;
+        var posMarketValues = new Dictionary<long, decimal>();
+        foreach (var pos in positions)
+        {
+            var mv = 0m;
+            if (quotes != null && quotes.TryGetValue(pos.StockCode, out var q) && q.Price > 0)
+            {
+                mv = (decimal)q.Price * pos.Quantity;
+            }
+            else
+            {
+                mv = pos.AvgCost * pos.Quantity;
+            }
+            posMarketValues[pos.Id] = mv;
+            totalMarketValue += mv;
+        }
+
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("💰 账户信息");
+        sb.AppendLine($"💵 可用余额: {account.Balance:N2} 元");
+        sb.AppendLine($"📦 持仓市值: {totalMarketValue:N2} 元");
+        sb.AppendLine($"📊 总资产: {account.Balance + totalMarketValue:N2} 元");
+        if (positions.Count > 0)
+        {
+            // 按市值倒序排列
+            positions.Sort((a, b) => posMarketValues[b.Id].CompareTo(posMarketValues[a.Id]));
+
             sb.AppendLine();
             sb.AppendLine("📦 --- 持仓 ---");
             foreach (var pos in positions)
             {
-                sb.AppendLine($"📋 {StockCodeParser.ToDisplayCode(pos.StockCode)}");
+                names.TryGetValue(pos.StockCode, out var stockName);
+                var cost = pos.AvgCost * pos.Quantity;
+                var mv = posMarketValues[pos.Id];
+                var pct = totalMarketValue > 0 ? mv / totalMarketValue * 100 : 0;
+                var currentPrice = quotes != null && quotes.TryGetValue(pos.StockCode, out var q) && q.Price > 0
+                    ? (decimal)q.Price : 0;
+                var gainPct = pos.AvgCost > 0 ? (currentPrice - pos.AvgCost) / pos.AvgCost * 100 : 0;
+                var gainSign = gainPct >= 0 ? "+" : "";
+                var gainEmoji = gainPct > 0 ? "🔴" : gainPct < 0 ? "🟢" : "⚪";
+                sb.AppendLine($"📋 {StockCodeParser.ToDisplayCode(pos.StockCode)} {stockName ?? pos.StockCode}");
                 sb.AppendLine($"   数量: {pos.Quantity} 股");
                 sb.AppendLine($"   均价: {pos.AvgCost:F2}");
+                sb.AppendLine($"   现价: {currentPrice:F2}  {gainEmoji} {gainSign}{gainPct:F2}%");
+                sb.AppendLine($"   成本: {cost:N2}");
+                sb.AppendLine($"   市值: {mv:N2} (占持仓 {pct:F1}%)");
             }
         }
         else
@@ -408,8 +457,8 @@ public class StockCommands : CommandHandlerBase
         sb.AppendLine($"🟢 卖一: {quote.Ask1:F2}");
         sb.AppendLine($"📈 最高: {quote.High:F2}");
         sb.AppendLine($"📉 最低: {quote.Low:F2}");
-        sb.AppendLine($"📦 成交量: {quote.Vol:F0}");
-        sb.AppendLine($"💰 成交额: {quote.Amount:F0}");
+        sb.AppendLine($"📦 成交量: {quote.Vol:N0}");
+        sb.AppendLine($"💰 成交额: {quote.Amount:N0}");
         await SendAsync(g, p, sb.ToString());
         return EventHandleResult.Block;
     }
