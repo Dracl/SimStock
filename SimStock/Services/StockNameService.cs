@@ -80,7 +80,32 @@ public class StockNameService
     private void AddToIndex(string code, string name)
     {
         _names[code] = name;
+
+        // 同名冲突时A股优先：债券/基金等不应覆盖A股
+        if (_nameToCode.TryGetValue(name, out var existingCode))
+        {
+            var existingIsAStock = IsAStock(existingCode);
+            var newIsAStock = IsAStock(code);
+            if (existingIsAStock && !newIsAStock)
+                return; // 保留已有的A股
+        }
+
         _nameToCode[name] = code;
+    }
+
+    private static bool IsAStock(string normalizedCode)
+    {
+        var parsed = StockCodeParser.ParseNormalized(normalizedCode);
+        if (!parsed.HasValue) return false;
+        var (market, code) = parsed.Value;
+        var prefix = code.Length >= 2 ? code[..2] : code;
+        return market switch
+        {
+            TdxProtocol.TdxConstants.MarketSH => prefix is "60" or "68",
+            TdxProtocol.TdxConstants.MarketSZ => prefix is "00" or "30",
+            TdxProtocol.TdxConstants.MarketBJ => prefix is "83" or "87" or "43" or "92",
+            _ => false
+        };
     }
 
     /// <summary>
