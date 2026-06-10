@@ -326,14 +326,15 @@ public class StockCommands : CommandHandlerBase
 
         var quote = await Entry.Quotes!.GetQuoteAsync(market, resolvedCode);
         var currentAsk = quote?.Ask1 ?? 0;
+        var stockName = await Entry.StockNames.GetNameAsync(normalized);
 
         if (fee.HasValue)
         {
-            await SendAsync(g, p, $" 🎯 限价买入已立即成交！\n股票: {StockCodeParser.ToDisplayCode(normalized)}\n数量: {qty} 股\n成交价: {currentAsk:F2} 元\n手续费: {fee:F2} 元");
+            await SendAsync(g, p, $" 🎯 限价买入已立即成交！\n股票: {StockCodeParser.ToDisplayCode(normalized)} {stockName}\n数量: {qty} 股\n成交价: {currentAsk:F2} 元\n手续费: {fee:F2} 元");
         }
         else
         {
-            await SendAsync(g, p, $" 📝 限价买单已挂出！\n订单号: {pendingId ?? 0}\n股票: {StockCodeParser.ToDisplayCode(normalized)}\n数量: {qty} 股\n委托价: {price:F2} 元\n当前卖一: {currentAsk:F2} 元\n⏳ 当卖一价 ≤ {price:F2} 时自动成交");
+            await SendAsync(g, p, $" 📝 限价买单已挂出！\n订单号: {pendingId ?? 0}\n股票: {StockCodeParser.ToDisplayCode(normalized)} {stockName}\n数量: {qty} 股\n委托价: {price:F2} 元\n当前卖一: {currentAsk:F2} 元\n⏳ 当卖一价 ≤ {price:F2} 时自动成交");
         }
 
         return EventHandleResult.Block;
@@ -362,14 +363,15 @@ public class StockCommands : CommandHandlerBase
 
         var quote = await Entry.Quotes!.GetQuoteAsync(market, resolvedCode);
         var currentBid = quote?.Bid1 ?? 0;
+        var stockName = await Entry.StockNames.GetNameAsync(normalized);
 
         if (fee.HasValue)
         {
-            await SendAsync(g, p, $" 🎯 限价卖出已立即成交！\n股票: {StockCodeParser.ToDisplayCode(normalized)}\n数量: {qty} 股\n成交价: {currentBid:F2} 元\n手续费: {fee:F2} 元");
+            await SendAsync(g, p, $" 🎯 限价卖出已立即成交！\n股票: {StockCodeParser.ToDisplayCode(normalized)} {stockName}\n数量: {qty} 股\n成交价: {currentBid:F2} 元\n手续费: {fee:F2} 元");
         }
         else
         {
-            await SendAsync(g, p, $" 📝 限价卖单已挂出！\n订单号: {pendingId ?? 0}\n股票: {StockCodeParser.ToDisplayCode(normalized)}\n数量: {qty} 股\n委托价: {price:F2} 元\n当前买一: {currentBid:F2} 元\n⏳ 当买一价 ≥ {price:F2} 时自动成交");
+            await SendAsync(g, p, $" 📝 限价卖单已挂出！\n订单号: {pendingId ?? 0}\n股票: {StockCodeParser.ToDisplayCode(normalized)} {stockName}\n数量: {qty} 股\n委托价: {price:F2} 元\n当前买一: {currentBid:F2} 元\n⏳ 当买一价 ≥ {price:F2} 时自动成交");
         }
 
         return EventHandleResult.Block;
@@ -497,7 +499,8 @@ public class StockCommands : CommandHandlerBase
 
         var quote = await Entry.Quotes!.GetQuoteAsync(market, resolvedCode);
         var price = quote != null ? (decimal)quote.Bid1 : 0;
-        await SendAsync(g, p, $" ✅ 市价卖出成功！\n股票: {StockCodeParser.ToDisplayCode(normalized)}\n数量: {qty} 股\n成交价: {price:F2} 元\n金额: {price * qty:F2} 元\n手续费: {fee:F2} 元");
+        var stockName = await Entry.StockNames.GetNameAsync(normalized);
+        await SendAsync(g, p, $" ✅ 市价卖出成功！\n股票: {StockCodeParser.ToDisplayCode(normalized)} {stockName}\n数量: {qty} 股\n成交价: {price:F2} 元\n金额: {price * qty:F2} 元\n手续费: {fee:F2} 元");
         return EventHandleResult.Block;
     }
 
