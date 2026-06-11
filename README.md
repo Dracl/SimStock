@@ -1,6 +1,8 @@
 # SimStock
 
-QQ群聊的模拟炒股插件。[AMN2](https://github.com/Hellobaka/Another-Mirai-Native2) 插件。Full Developed by Deepseek V4 pro
+QQ群聊的模拟炒股插件。
+[AMN2](https://github.com/Hellobaka/Another-Mirai-Native2) 插件，要求 AMN2 版本 2.13.0 以上。
+Full Developed by Deepseek V4 pro.
 
 ```plain
 💰 【账户管理】
