@@ -349,14 +349,7 @@ public class StockCommands : CommandHandlerBase
 
         var sb = new System.Text.StringBuilder();
         sb.AppendLine("🌍 === 全局排行 TOP 20 ===");
-        if (g != null)
-        {
-            await BuildGlobalLeaderboardAsync(sb, leaderboard);
-        }
-        else
-        {
-            AppendRankRowsForPrivate(sb, leaderboard);
-        }
+        await BuildGlobalLeaderboardAsync(sb, leaderboard);
 
         await SendAsync(g, p, sb.ToString());
         return EventHandleResult.Block;
