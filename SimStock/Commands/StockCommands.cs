@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Another_Mirai_Native.Abstractions;
 using Another_Mirai_Native.Abstractions.Attributes;
 using Another_Mirai_Native.Abstractions.Context;
@@ -9,6 +10,16 @@ namespace SimStock;
 public class StockCommands : CommandHandlerBase
 {
     private const long PrivateChatGroupId = 0L;
+
+    /// <summary>昵称缓存：QQ → (昵称, 过期时间)，过期后重新拉取</summary>
+    private static readonly ConcurrentDictionary<long, (string Name, DateTime Expiry)> NicknameCache = new();
+
+    private static readonly TimeSpan NicknameCacheTtl = TimeSpan.FromHours(12);
+
+    /// <summary>好友列表缓存</summary>
+    private static Dictionary<long, string>? _friendListCache;
+    private static DateTime _friendListCacheTime;
+    private static readonly SemaphoreSlim _friendListLock = new(1, 1);
 
     public string AccountCmd => Entry.Config.GetCommandTemplate("Account");
 
@@ -340,7 +351,7 @@ public class StockCommands : CommandHandlerBase
         sb.AppendLine("🌍 === 全局排行 TOP 20 ===");
         if (g != null)
         {
-            await BuildLeaderboardAsync(sb, leaderboard, g.FromGroup.Id);
+            await BuildGlobalLeaderboardAsync(sb, leaderboard);
         }
         else
         {
@@ -737,24 +748,128 @@ public class StockCommands : CommandHandlerBase
     // ==================== 信息查询 ====================
     private static async Task BuildLeaderboardAsync(System.Text.StringBuilder sb, List<Account> accounts, long groupId)
     {
-        var nameCache = new Dictionary<long, string>();
+        var nameCache = await ResolveNicknamesAsync(accounts, groupId);
+        AppendRankRows(sb, accounts, nameCache);
+    }
+
+    /// <summary>全局排行：从 UserGroups 查每个用户所在群来获取昵称</summary>
+    private static async Task BuildGlobalLeaderboardAsync(System.Text.StringBuilder sb, List<Account> accounts)
+    {
+        var result = new Dictionary<long, string>();
+        var now = DateTime.Now;
+
+        // 先检查缓存，收集未命中的 QQ
+        var uncached = new List<long>();
         foreach (var a in accounts)
         {
-            if (nameCache.ContainsKey(a.QQ))
+            if (result.ContainsKey(a.QQ)) continue;
+            if (NicknameCache.TryGetValue(a.QQ, out var cached) && cached.Expiry > now)
             {
+                result[a.QQ] = cached.Name;
+            }
+            else
+            {
+                uncached.Add(a.QQ);
+            }
+        }
+
+        if (uncached.Count > 0)
+        {
+            // 查出这些用户的 UserGroup
+            var userGroups = await Entry.Db!.Queryable<Models.UserGroup>()
+                .Where(ug => uncached.Contains(ug.QQ))
+                .ToListAsync();
+            var groupLookup = userGroups
+                .GroupBy(ug => ug.QQ)
+                .ToDictionary(g => g.Key, g => g.First().GroupId);
+
+            foreach (var qq in uncached)
+            {
+                if (result.ContainsKey(qq)) continue;
+
+                string name;
+                if (groupLookup.TryGetValue(qq, out var gid))
+                {
+                    try
+                    {
+                        var member = Entry.Api.GroupApi.GetGroupMemberInfo(gid, qq);
+                        name = member != null
+                            ? (!string.IsNullOrEmpty(member.Card) ? member.Card : !string.IsNullOrEmpty(member.Nick) ? member.Nick : qq.ToString())
+                            : qq.ToString();
+                    }
+                    catch { name = qq.ToString(); }
+                }
+                else
+                {
+                    // 纯私聊用户，尝试好友列表
+                    var friendNick = await GetFriendNicknameAsync(qq);
+                    name = friendNick ?? qq.ToString();
+                }
+
+                result[qq] = name;
+                NicknameCache[qq] = (name, now + NicknameCacheTtl);
+            }
+        }
+        AppendRankRows(sb, accounts, result);
+    }
+
+    /// <summary>从好友列表获取昵称（带缓存），未找到返回 null</summary>
+    private static async Task<string?> GetFriendNicknameAsync(long qq)
+    {
+        await _friendListLock.WaitAsync();
+        try
+        {
+            if (_friendListCache == null || (DateTime.Now - _friendListCacheTime) > NicknameCacheTtl)
+            {
+                try
+                {
+                    var friends = await Entry.Api.FriendApi.GetFriendInfosAsync();
+                    _friendListCache = friends.ToDictionary(f => f.QQ, f =>
+                        !string.IsNullOrEmpty(f.Nick) ? f.Nick : f.QQ.ToString());
+                    _friendListCacheTime = DateTime.Now;
+                }
+                catch
+                {
+                    _friendListCache ??= [];
+                    _friendListCacheTime = DateTime.Now;
+                }
+            }
+            return _friendListCache.TryGetValue(qq, out var nick) ? nick : null;
+        }
+        finally { _friendListLock.Release(); }
+    }
+
+    private static async Task<Dictionary<long, string>> ResolveNicknamesAsync(List<Account> accounts, long groupId)
+    {
+        var result = new Dictionary<long, string>();
+        var now = DateTime.Now;
+
+        foreach (var a in accounts)
+        {
+            if (result.ContainsKey(a.QQ)) continue;
+
+            // 先查缓存
+            if (NicknameCache.TryGetValue(a.QQ, out var cached) && cached.Expiry > now)
+            {
+                result[a.QQ] = cached.Name;
                 continue;
             }
 
+            // API 拉取
+            string name;
             try
             {
                 var member = Entry.Api.GroupApi.GetGroupMemberInfo(groupId, a.QQ);
-                nameCache[a.QQ] = member != null
+                name = member != null
                     ? (!string.IsNullOrEmpty(member.Card) ? member.Card : !string.IsNullOrEmpty(member.Nick) ? member.Nick : a.QQ.ToString())
                     : a.QQ.ToString();
             }
-            catch { nameCache[a.QQ] = a.QQ.ToString(); }
+            catch { name = a.QQ.ToString(); }
+
+            result[a.QQ] = name;
+            NicknameCache[a.QQ] = (name, now + NicknameCacheTtl);
         }
-        AppendRankRows(sb, accounts, nameCache);
+        return result;
     }
 
     /// <summary>
