@@ -15,9 +15,9 @@ public static class TradingService
 
     // === 市价买入 ===
     public static async Task<(Order? order, string? error, decimal? fee)> MarketBuyAsync(
-        long qq, long groupId, string normalizedCode, int quantity, long? sourceGroupId = null)
+        long qq, string normalizedCode, int quantity, long? sourceGroupId = null)
     {
-        var (account, err) = await SafetyChecker.RequireAccountAsync(Db, qq, groupId);
+        var (account, err) = await SafetyChecker.RequireAccountAsync(Db, qq);
         if (account == null)
         {
             return (null, err, null);
@@ -135,9 +135,9 @@ public static class TradingService
 
     // === 限价买入 ===
     public static async Task<(Order? order, string? error, decimal? fee, long? pendingOrderId)> LimitBuyAsync(
-        long qq, long groupId, string normalizedCode, int quantity, decimal price, long? sourceGroupId = null, int? sourceMessageId = null)
+        long qq, string normalizedCode, int quantity, decimal price, long? sourceGroupId = null, int? sourceMessageId = null)
     {
-        var (account, err) = await SafetyChecker.RequireAccountAsync(Db, qq, groupId);
+        var (account, err) = await SafetyChecker.RequireAccountAsync(Db, qq);
         if (account == null)
         {
             return (null, err, null, null);
@@ -282,9 +282,9 @@ public static class TradingService
 
     // === 市价卖出 ===
     public static async Task<(Order? order, string? error, decimal? fee)> MarketSellAsync(
-        long qq, long groupId, string normalizedCode, int quantity, long? sourceGroupId = null)
+        long qq, string normalizedCode, int quantity, long? sourceGroupId = null)
     {
-        var (account, err) = await SafetyChecker.RequireAccountAsync(Db, qq, groupId);
+        var (account, err) = await SafetyChecker.RequireAccountAsync(Db, qq);
         if (account == null)
         {
             return (null, err, null);
@@ -402,9 +402,9 @@ public static class TradingService
 
     // === 限价卖出 ===
     public static async Task<(Order? order, string? error, decimal? fee, long? pendingOrderId)> LimitSellAsync(
-        long qq, long groupId, string normalizedCode, int quantity, decimal price, long? sourceGroupId = null, int? sourceMessageId = null)
+        long qq, string normalizedCode, int quantity, decimal price, long? sourceGroupId = null, int? sourceMessageId = null)
     {
-        var (account, err) = await SafetyChecker.RequireAccountAsync(Db, qq, groupId);
+        var (account, err) = await SafetyChecker.RequireAccountAsync(Db, qq);
         if (account == null)
         {
             return (null, err, null, null);
@@ -547,9 +547,9 @@ public static class TradingService
     }
 
     // === 撤单 ===
-    public static async Task<(bool success, string? error)> CancelOrderAsync(long qq, long groupId, long orderId)
+    public static async Task<(bool success, string? error)> CancelOrderAsync(long qq, long orderId)
     {
-        var (account, err) = await SafetyChecker.RequireAccountAsync(Db, qq, groupId);
+        var (account, err) = await SafetyChecker.RequireAccountAsync(Db, qq);
         if (account == null)
         {
             return (false, err);

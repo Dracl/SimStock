@@ -61,7 +61,7 @@ public class StockCommands : CommandHandlerBase
             return EventHandleResult.Block;
         }
 
-        var account = await AccountService.GetAccountAsync(qq, groupId);
+        var account = await AccountService.GetAccountAsync(qq);
         if (account == null)
         {
             await SendAsync(g, p, $"⚠️ 您还没有交易账户，请使用 {Entry.Config.GetTrigger("Register")} 创建");
@@ -69,7 +69,7 @@ public class StockCommands : CommandHandlerBase
         }
 
         await AccountService.UpdateTotalAssetAsync(account.Id);
-        account = await AccountService.GetAccountAsync(qq, groupId); // 重新读取更新后的总资产
+        account = await AccountService.GetAccountAsync(qq); // 重新读取更新后的总资产
 
         var positions = await AccountService.GetPositionsAsync(account.Id);
         var pendingOrders = await Entry.Db!.Queryable<Models.Order>().CountAsync(o => o.AccountId == account.Id && o.Status == 0);
@@ -227,13 +227,13 @@ public class StockCommands : CommandHandlerBase
         var (th, err) = SafetyChecker.CheckTradingHours();
         if (!th) { await SendAsync(g, p, err!); return EventHandleResult.Block; }
 
-        var (account, err2) = await SafetyChecker.RequireAccountAsync(Entry.Db!, qq, groupId);
+        var (account, err2) = await SafetyChecker.RequireAccountAsync(Entry.Db!, qq);
         if (account == null) { await SendAsync(g, p, err2!); return EventHandleResult.Block; }
 
         var (market, resolvedCode, normalized, resolveErr) = await Entry.Quotes!.ResolveCodeAsync(code);
         if (resolveErr != null && market == 0) { await SendAsync(g, p, resolveErr); return EventHandleResult.Block; }
 
-        var (order, err3, fee) = await TradingService.MarketBuyAsync(qq, groupId, normalized, qty, sourceGroupId);
+        var (order, err3, fee) = await TradingService.MarketBuyAsync(qq, normalized, qty, sourceGroupId);
         if (err3 != null) { await SendAsync(g, p, err3); return EventHandleResult.Block; }
 
         var quote = await Entry.Quotes!.GetQuoteAsync(market, resolvedCode);
@@ -256,7 +256,7 @@ public class StockCommands : CommandHandlerBase
         var (th, err) = SafetyChecker.CheckTradingHours();
         if (!th) { await SendAsync(g, p, err!); return EventHandleResult.Block; }
 
-        var (account, err2) = await SafetyChecker.RequireAccountAsync(Entry.Db!, qq, groupId);
+        var (account, err2) = await SafetyChecker.RequireAccountAsync(Entry.Db!, qq);
         if (account == null) { await SendAsync(g, p, err2!); return EventHandleResult.Block; }
 
         var (market, resolvedCode, normalized, resolveErr) = await Entry.Quotes!.ResolveCodeAsync(code);
@@ -277,7 +277,7 @@ public class StockCommands : CommandHandlerBase
         var qty = CalcAllInQty(account.Balance, price);
         if (qty < 100) { await SendAsync(g, p, $"可用余额 {account.Balance:N2} 不足以购买 1 手（需 ≈{price * 100 * 1.0003m:N2} 元）"); return EventHandleResult.Block; }
 
-        var (order, err3, fee) = await TradingService.MarketBuyAsync(qq, groupId, normalized, qty, sourceGroupId);
+        var (order, err3, fee) = await TradingService.MarketBuyAsync(qq, normalized, qty, sourceGroupId);
         if (err3 != null) { await SendAsync(g, p, err3); return EventHandleResult.Block; }
 
         var stockName = await Entry.StockNames.GetNameAsync(normalized);
@@ -295,7 +295,7 @@ public class StockCommands : CommandHandlerBase
             return EventHandleResult.Block;
         }
 
-        var (success, err3) = await TradingService.CancelOrderAsync(qq, groupId, orderId);
+        var (success, err3) = await TradingService.CancelOrderAsync(qq, orderId);
         if (!success) { await SendAsync(g, p, err3!); return EventHandleResult.Block; }
 
         await SendAsync(g, p, $" ❌ 订单 {orderId} 已撤销");
@@ -316,10 +316,10 @@ public class StockCommands : CommandHandlerBase
 
         if (!await AdminService.IsAdminAsync(groupId, callerQq)) { await SendAsync(g, p, "仅本群插件管理员可执行此操作"); return EventHandleResult.Block; }
 
-        var (success, err3) = await AccountService.DepositAsync(qq, groupId, amount);
+        var (success, err3) = await AccountService.DepositAsync(qq, amount);
         if (!success) { await SendAsync(g, p, err3!); return EventHandleResult.Block; }
 
-        var account = await AccountService.GetAccountAsync(qq, groupId);
+        var account = await AccountService.GetAccountAsync(qq);
         await SendAsync(g, p, $" 💵 已向 QQ({qq}) 入金 {amount:N2} 元，当前余额: {account!.Balance:N2} 元");
         return EventHandleResult.Block;
     }
@@ -375,7 +375,7 @@ public class StockCommands : CommandHandlerBase
             return EventHandleResult.Block;
         }
 
-        var account = await AccountService.GetAccountAsync(qq, groupId);
+        var account = await AccountService.GetAccountAsync(qq);
         if (account == null) { await SendAsync(g, p, $"⚠️ 请先使用 {Entry.Config.GetTrigger("Register")} 创建账户"); return EventHandleResult.Block; }
 
         var trades = await TradingService.GetTradeHistoryAsync(account.Id, 20);
@@ -409,14 +409,14 @@ public class StockCommands : CommandHandlerBase
             return EventHandleResult.Block;
         }
 
-        var (account, err2) = await SafetyChecker.RequireAccountAsync(Entry.Db!, qq, groupId);
+        var (account, err2) = await SafetyChecker.RequireAccountAsync(Entry.Db!, qq);
         if (account == null) { await SendAsync(g, p, err2!); return EventHandleResult.Block; }
 
         var (market, resolvedCode, normalized, resolveErr) = await Entry.Quotes!.ResolveCodeAsync(code);
         if (resolveErr != null && market == 0) { await SendAsync(g, p, resolveErr); return EventHandleResult.Block; }
 
         var sourceMsgId = g?.Message.Id ?? p?.Message.Id;
-        var (order, err3, fee, pendingId) = await TradingService.LimitBuyAsync(qq, groupId, normalized, qty, price, sourceGroupId, sourceMsgId);
+        var (order, err3, fee, pendingId) = await TradingService.LimitBuyAsync(qq, normalized, qty, price, sourceGroupId, sourceMsgId);
         if (err3 != null) { await SendAsync(g, p, err3); return EventHandleResult.Block; }
 
         var quote = await Entry.Quotes!.GetQuoteAsync(market, resolvedCode);
@@ -446,7 +446,7 @@ public class StockCommands : CommandHandlerBase
             return EventHandleResult.Block;
         }
 
-        var (account, err2) = await SafetyChecker.RequireAccountAsync(Entry.Db!, qq, groupId);
+        var (account, err2) = await SafetyChecker.RequireAccountAsync(Entry.Db!, qq);
         if (account == null) { await SendAsync(g, p, err2!); return EventHandleResult.Block; }
 
         var (market, resolvedCode, normalized, resolveErr) = await Entry.Quotes!.ResolveCodeAsync(code);
@@ -457,7 +457,7 @@ public class StockCommands : CommandHandlerBase
         if (qty < 100) { await SendAsync(g, p, $"可用余额 {account.Balance:N2} 不足以购买 1 手（委托价 {price:F2}，需 ≈{price * 100 * 1.0003m:N2} 元）"); return EventHandleResult.Block; }
 
         var sourceMsgId = g?.Message.Id ?? p?.Message.Id;
-        var (order, err3, fee, pendingId) = await TradingService.LimitBuyAsync(qq, groupId, normalized, qty, price, sourceGroupId, sourceMsgId);
+        var (order, err3, fee, pendingId) = await TradingService.LimitBuyAsync(qq, normalized, qty, price, sourceGroupId, sourceMsgId);
         if (err3 != null) { await SendAsync(g, p, err3); return EventHandleResult.Block; }
 
         var quote = await Entry.Quotes!.GetQuoteAsync(market, resolvedCode);
@@ -487,14 +487,14 @@ public class StockCommands : CommandHandlerBase
             return EventHandleResult.Block;
         }
 
-        var (account, err2) = await SafetyChecker.RequireAccountAsync(Entry.Db!, qq, groupId);
+        var (account, err2) = await SafetyChecker.RequireAccountAsync(Entry.Db!, qq);
         if (account == null) { await SendAsync(g, p, err2!); return EventHandleResult.Block; }
 
         var (market, resolvedCode, normalized, resolveErr) = await Entry.Quotes!.ResolveCodeAsync(code);
         if (resolveErr != null && market == 0) { await SendAsync(g, p, resolveErr); return EventHandleResult.Block; }
 
         var sourceMsgId = g?.Message.Id ?? p?.Message.Id;
-        var (order, err3, fee, pendingId) = await TradingService.LimitSellAsync(qq, groupId, normalized, qty, price, sourceGroupId, sourceMsgId);
+        var (order, err3, fee, pendingId) = await TradingService.LimitSellAsync(qq, normalized, qty, price, sourceGroupId, sourceMsgId);
         if (err3 != null) { await SendAsync(g, p, err3); return EventHandleResult.Block; }
 
         var quote = await Entry.Quotes!.GetQuoteAsync(market, resolvedCode);
@@ -579,7 +579,7 @@ public class StockCommands : CommandHandlerBase
             return EventHandleResult.Block;
         }
 
-        var (account, err3) = await AccountService.CreateAccountAsync(qq, groupId);
+        var (account, err3) = await AccountService.CreateAccountAsync(qq);
         if (err3 != null) { await SendAsync(g, p, err3); return EventHandleResult.Block; }
 
         var msg = groupId != PrivateChatGroupId
@@ -602,10 +602,10 @@ public class StockCommands : CommandHandlerBase
 
         if (!await AdminService.IsAdminAsync(groupId, callerQq)) { await SendAsync(g, p, "仅本群插件管理员可执行此操作"); return EventHandleResult.Block; }
 
-        var account = await AccountService.GetAccountAsync(qq, groupId);
+        var account = await AccountService.GetAccountAsync(qq);
         if (account == null) { await SendAsync(g, p, $"QQ({qq}) 在本群没有交易账户"); return EventHandleResult.Block; }
 
-        await AccountService.ResetAccountAsync(qq, groupId);
+        await AccountService.ResetAccountAsync(qq);
         await SendAsync(g, p, $" 🔄 QQ({qq}) 的账户已重置，所有数据已清空");
         return EventHandleResult.Block;
     }
@@ -624,13 +624,13 @@ public class StockCommands : CommandHandlerBase
         var (th, err) = SafetyChecker.CheckTradingHours();
         if (!th) { await SendAsync(g, p, err!); return EventHandleResult.Block; }
 
-        var (account, err2) = await SafetyChecker.RequireAccountAsync(Entry.Db!, qq, groupId);
+        var (account, err2) = await SafetyChecker.RequireAccountAsync(Entry.Db!, qq);
         if (account == null) { await SendAsync(g, p, err2!); return EventHandleResult.Block; }
 
         var (market, resolvedCode, normalized, resolveErr) = await Entry.Quotes!.ResolveCodeAsync(code);
         if (resolveErr != null && market == 0) { await SendAsync(g, p, resolveErr); return EventHandleResult.Block; }
 
-        var (order, err3, fee) = await TradingService.MarketSellAsync(qq, groupId, normalized, qty, sourceGroupId);
+        var (order, err3, fee) = await TradingService.MarketSellAsync(qq, normalized, qty, sourceGroupId);
         if (err3 != null) { await SendAsync(g, p, err3); return EventHandleResult.Block; }
 
         var quote = await Entry.Quotes!.GetQuoteAsync(market, resolvedCode);
@@ -653,10 +653,10 @@ public class StockCommands : CommandHandlerBase
             return EventHandleResult.Block;
         }
 
-        var (success, err3) = await AccountService.WithdrawAsync(qq, groupId, amount);
+        var (success, err3) = await AccountService.WithdrawAsync(qq, amount);
         if (!success) { await SendAsync(g, p, err3!); return EventHandleResult.Block; }
 
-        var account = await AccountService.GetAccountAsync(qq, groupId);
+        var account = await AccountService.GetAccountAsync(qq);
         await SendAsync(g, p, $" 💸 出金 {amount:N2} 元成功！当前余额: {account!.Balance:N2} 元");
         return EventHandleResult.Block;
     }
@@ -769,6 +769,7 @@ public class StockCommands : CommandHandlerBase
             {
                 return false;
             }
+            await AccountService.RecordGroupInteractionAsync(qq, g.FromGroup.Id);
         }
         var (b, _) = SafetyChecker.CheckUserBlacklist(qq);
         return b;

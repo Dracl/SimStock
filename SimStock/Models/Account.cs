@@ -8,11 +8,7 @@ public class Account
     [SugarColumn(IsPrimaryKey = true, IsIdentity = true, ColumnDataType = "INTEGER")]
     public long Id { get; set; }
 
-    [SugarColumn(IndexGroupNameList = ["IX_QQ_Group"])]
     public long QQ { get; set; }
-
-    [SugarColumn(IndexGroupNameList = ["IX_QQ_Group"])]
-    public long GroupId { get; set; }
 
     public decimal Balance { get; set; }
 

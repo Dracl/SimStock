@@ -35,7 +35,6 @@ public partial class AdminWindow : Window
         // Account
         ["Id"] = "ID",
         ["QQ"] = "QQ号",
-        ["GroupId"] = "群号",
         ["Balance"] = "可用余额",
         ["TotalAsset"] = "总资产",
         ["CreatedAt"] = "注册时间",
@@ -292,7 +291,7 @@ public partial class AdminWindow : Window
         }
 
         var result = MessageBox.Show(
-            $"确认重置 QQ={account.QQ} 群={account.GroupId} 的账户？\n所有数据将被清空且不可恢复。",
+            $"确认重置 QQ={account.QQ} 的账户？\n所有数据将被清空且不可恢复。",
             "确认操作", MessageBoxButton.YesNo, MessageBoxImage.Warning);
         if (result != MessageBoxResult.Yes)
         {
@@ -301,7 +300,7 @@ public partial class AdminWindow : Window
 
         try
         {
-            await AccountService.ResetAccountAsync(account.QQ, account.GroupId);
+            await AccountService.ResetAccountAsync(account.QQ);
             MessageBox.Show("账户已重置");
             await LoadUsers();
         }

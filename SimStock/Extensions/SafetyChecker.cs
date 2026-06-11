@@ -44,10 +44,10 @@ public static class SafetyChecker
     }
 
     // 4. 需要已有账户
-    public static async Task<(Account? account, string? error)> RequireAccountAsync(SqlSugarScope db, long qq, long groupId)
+    public static async Task<(Account? account, string? error)> RequireAccountAsync(SqlSugarScope db, long qq)
     {
         var account = await db.Queryable<Account>()
-            .FirstAsync(a => a.QQ == qq && a.GroupId == groupId);
+            .FirstAsync(a => a.QQ == qq);
         if (account == null)
         {
             return (null, $"请先使用 {Entry.Config.GetTrigger("Register")} 创建交易账户");

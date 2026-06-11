@@ -4,21 +4,22 @@ using SqlSugar;
 namespace SimStock;
 
 /// <summary>
-/// 账户管理服务。负责账户注册、查询、入金/出金、重置、排行。
+/// 账户管理服务。每个 QQ 全局唯一账户，跨群共享资金。
+/// 通过 UserGroup 表记录用户在哪些群交互过，用于群排行过滤。
 /// </summary>
 public static class AccountService
 {
     private static SqlSugarScope Db => Entry.Db!;
 
-    public static async Task<Account?> GetAccountAsync(long qq, long groupId)
+    public static async Task<Account?> GetAccountAsync(long qq)
     {
         return await Db.Queryable<Account>()
-            .FirstAsync(a => a.QQ == qq && a.GroupId == groupId);
+            .FirstAsync(a => a.QQ == qq);
     }
 
-    public static async Task<(Account? account, string? error)> CreateAccountAsync(long qq, long groupId)
+    public static async Task<(Account? account, string? error)> CreateAccountAsync(long qq)
     {
-        var existing = await GetAccountAsync(qq, groupId);
+        var existing = await GetAccountAsync(qq);
         if (existing != null)
         {
             return (existing, "您已注册过交易账户，请使用 /股票账户 查看");
@@ -27,7 +28,6 @@ public static class AccountService
         var account = new Account
         {
             QQ = qq,
-            GroupId = groupId,
             Balance = Entry.Config.InitialCapital,
             TotalAsset = Entry.Config.InitialCapital,
             CreatedAt = DateTime.Now,
@@ -39,14 +39,28 @@ public static class AccountService
         return (account, null);
     }
 
-    public static async Task<(bool success, string? error)> DepositAsync(long qq, long groupId, decimal amount)
+    /// <summary>记录用户在指定群的交互（幂等，已存在则忽略）</summary>
+    public static async Task RecordGroupInteractionAsync(long qq, long groupId)
+    {
+        if (groupId == 0) return; // 私聊不记录
+        try
+        {
+            await Db.Insertable(new UserGroup { QQ = qq, GroupId = groupId }).ExecuteCommandAsync();
+        }
+        catch
+        {
+            // 唯一约束冲突，已存在则忽略
+        }
+    }
+
+    public static async Task<(bool success, string? error)> DepositAsync(long qq, decimal amount)
     {
         if (amount <= 0)
         {
             return (false, "入金金额必须大于0");
         }
 
-        var account = await GetAccountAsync(qq, groupId);
+        var account = await GetAccountAsync(qq);
         if (account == null)
         {
             return (false, $"请先使用 {Entry.Config.GetTrigger("Register")} 创建账户");
@@ -59,14 +73,14 @@ public static class AccountService
         return (true, null);
     }
 
-    public static async Task<(bool success, string? error)> WithdrawAsync(long qq, long groupId, decimal amount)
+    public static async Task<(bool success, string? error)> WithdrawAsync(long qq, decimal amount)
     {
         if (amount <= 0)
         {
             return (false, "出金金额必须大于0");
         }
 
-        var account = await GetAccountAsync(qq, groupId);
+        var account = await GetAccountAsync(qq);
         if (account == null)
         {
             return (false, $"请先使用 {Entry.Config.GetTrigger("Register")} 创建账户");
@@ -84,9 +98,9 @@ public static class AccountService
         return (true, null);
     }
 
-    public static async Task ResetAccountAsync(long qq, long groupId)
+    public static async Task ResetAccountAsync(long qq)
     {
-        var account = await GetAccountAsync(qq, groupId);
+        var account = await GetAccountAsync(qq);
         if (account == null)
         {
             return;
@@ -97,81 +111,28 @@ public static class AccountService
             await Db.Deleteable<Order>().Where(o => o.AccountId == account.Id).ExecuteCommandAsync();
             await Db.Deleteable<TradeRecord>().Where(t => t.AccountId == account.Id).ExecuteCommandAsync();
             await Db.Deleteable<Position>().Where(p => p.AccountId == account.Id).ExecuteCommandAsync();
+            await Db.Deleteable<UserGroup>().Where(ug => ug.QQ == qq).ExecuteCommandAsync();
             await Db.Deleteable<Account>().Where(a => a.Id == account.Id).ExecuteCommandAsync();
         });
     }
 
+    /// <summary>本群排行：在该群交互过的用户按总资产降序</summary>
     public static async Task<List<Account>> GetLeaderboardAsync(long groupId, int top = 20)
     {
-        var accounts = await Db.Queryable<Account>()
-            .Where(a => a.GroupId == groupId)
-            .OrderBy(a => a.TotalAsset, OrderByType.Desc)
+        return await Db.Queryable<Account>()
+            .InnerJoin<UserGroup>((a, ug) => a.QQ == ug.QQ && ug.GroupId == groupId)
+            .OrderBy((a) => a.TotalAsset, OrderByType.Desc)
             .Take(top)
             .ToListAsync();
-        await RefreshTotalAssetsAsync(accounts);
-        accounts.Sort((a, b) => b.TotalAsset.CompareTo(a.TotalAsset));
-        return accounts;
     }
 
+    /// <summary>全局排行：所有用户按总资产降序</summary>
     public static async Task<List<Account>> GetGlobalLeaderboardAsync(int top = 20)
     {
-        var accounts = await Db.Queryable<Account>()
+        return await Db.Queryable<Account>()
             .OrderBy(a => a.TotalAsset, OrderByType.Desc)
             .Take(top)
             .ToListAsync();
-        await RefreshTotalAssetsAsync(accounts);
-        accounts.Sort((a, b) => b.TotalAsset.CompareTo(a.TotalAsset));
-        return accounts;
-    }
-
-    /// <summary>批量刷新账户总资产：收集所有持仓的唯�股票，一次批量获取行情后重算</summary>
-    private static async Task RefreshTotalAssetsAsync(List<Account> accounts)
-    {
-        if (accounts.Count == 0) return;
-
-        // 收集所有账户的持仓
-        var accountIds = accounts.Select(a => a.Id).ToList();
-        var allPositions = await Db.Queryable<Position>()
-            .Where(p => accountIds.Contains(p.AccountId) && p.Quantity > 0)
-            .ToListAsync();
-
-        if (allPositions.Count == 0) return;
-
-        // 收集唯一股票代码并批量获取行情
-        var uniqueStocks = allPositions
-            .Select(p => StockCodeParser.ParseNormalized(p.StockCode))
-            .Where(p => p.HasValue)
-            .Select(p => (p.Value.market, p.Value.code))
-            .Distinct()
-            .ToList();
-
-        Dictionary<string, TdxProtocol.Models.QuoteResult>? quotes = null;
-        try { quotes = await Entry.Quotes!.GetQuotesBatchAsync(uniqueStocks); }
-        catch { /* 行情不可用时刷新失败，使用缓存值 */ }
-        if (quotes == null) return;
-
-        // 按账户分组计算市值
-        var marketValues = new Dictionary<long, decimal>();
-        foreach (var pos in allPositions)
-        {
-            if (quotes.TryGetValue(pos.StockCode, out var quote) && quote.Price > 0)
-            {
-                marketValues.TryGetValue(pos.AccountId, out var current);
-                marketValues[pos.AccountId] = current + (decimal)quote.Price * pos.Quantity;
-            }
-        }
-
-        // 更新 TotalAsset
-        foreach (var account in accounts)
-        {
-            var mv = marketValues.GetValueOrDefault(account.Id);
-            if (account.TotalAsset != account.Balance + mv)
-            {
-                account.TotalAsset = account.Balance + mv;
-                account.UpdatedAt = DateTime.Now;
-                await Db.Updateable(account).ExecuteCommandAsync();
-            }
-        }
     }
 
     public static async Task<List<Position>> GetPositionsAsync(long accountId)
