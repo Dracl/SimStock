@@ -119,20 +119,26 @@ public static class AccountService
     /// <summary>本群排行：在该群交互过的用户按总资产降序</summary>
     public static async Task<List<Account>> GetLeaderboardAsync(long groupId, int top = 20)
     {
-        return await Db.Queryable<Account>()
+        var accounts = await Db.Queryable<Account>()
             .InnerJoin<UserGroup>((a, ug) => a.QQ == ug.QQ && ug.GroupId == groupId)
             .OrderBy((a) => a.TotalAsset, OrderByType.Desc)
             .Take(top)
             .ToListAsync();
+        await RefreshTotalAssetsAsync(accounts);
+        accounts.Sort((a, b) => b.TotalAsset.CompareTo(a.TotalAsset));
+        return accounts;
     }
 
     /// <summary>全局排行：所有用户按总资产降序</summary>
     public static async Task<List<Account>> GetGlobalLeaderboardAsync(int top = 20)
     {
-        return await Db.Queryable<Account>()
+        var accounts = await Db.Queryable<Account>()
             .OrderBy(a => a.TotalAsset, OrderByType.Desc)
             .Take(top)
             .ToListAsync();
+        await RefreshTotalAssetsAsync(accounts);
+        accounts.Sort((a, b) => b.TotalAsset.CompareTo(a.TotalAsset));
+        return accounts;
     }
 
     public static async Task<List<Position>> GetPositionsAsync(long accountId)
@@ -176,5 +182,54 @@ public static class AccountService
         account.TotalAsset = account.Balance + marketValue;
         account.UpdatedAt = DateTime.Now;
         await Db.Updateable(account).ExecuteCommandAsync();
+    }
+
+    /// <summary>批量刷新账户总资产：一次查询所有持仓的行情后重新计算</summary>
+    private static async Task RefreshTotalAssetsAsync(List<Account> accounts)
+    {
+        if (accounts.Count == 0) return;
+
+        var accountIds = accounts.Select(a => a.Id).ToList();
+        var allPositions = await Db.Queryable<Position>()
+            .Where(p => accountIds.Contains(p.AccountId) && p.Quantity > 0)
+            .ToListAsync();
+
+        if (allPositions.Count == 0) return;
+
+        var uniqueStocks = allPositions
+            .Select(p => StockCodeParser.ParseNormalized(p.StockCode))
+            .Where(p => p.HasValue)
+            .Select(p => (p.Value.market, p.Value.code))
+            .Distinct()
+            .ToList();
+
+        Dictionary<string, TdxProtocol.Models.QuoteResult>? quotes = null;
+        try { quotes = await Entry.Quotes!.GetQuotesBatchAsync(uniqueStocks); }
+        catch { /* 行情不可用时跳过 */ }
+        if (quotes == null) return;
+
+        // 按账户分组计算市值
+        var marketValues = new Dictionary<long, decimal>();
+        foreach (var pos in allPositions)
+        {
+            if (quotes.TryGetValue(pos.StockCode, out var quote) && quote.Price > 0)
+            {
+                marketValues.TryGetValue(pos.AccountId, out var current);
+                marketValues[pos.AccountId] = current + (decimal)quote.Price * pos.Quantity;
+            }
+        }
+
+        // 更新各账户 TotalAsset
+        foreach (var account in accounts)
+        {
+            var mv = marketValues.GetValueOrDefault(account.Id);
+            var newTotal = account.Balance + mv;
+            if (account.TotalAsset != newTotal)
+            {
+                account.TotalAsset = newTotal;
+                account.UpdatedAt = DateTime.Now;
+                await Db.Updateable(account).ExecuteCommandAsync();
+            }
+        }
     }
 }
