@@ -3,6 +3,7 @@ using Another_Mirai_Native.Abstractions;
 using Another_Mirai_Native.Abstractions.Attributes;
 using Another_Mirai_Native.Abstractions.Context;
 using Another_Mirai_Native.Abstractions.Enums;
+using Another_Mirai_Native.Abstractions.Models.MessageItem;
 using SimStock.Models;
 
 namespace SimStock;
@@ -162,7 +163,7 @@ public class StockCommands : CommandHandlerBase
             sb.AppendLine($"\n📋 当前挂单: {pendingOrders} 单");
         }
 
-        await SendAsync(g, p, sb.ToString());
+        await SendAsync(g, p, sb.ToString(), true);
         return EventHandleResult.Block;
     }
 
@@ -351,7 +352,7 @@ public class StockCommands : CommandHandlerBase
         sb.AppendLine("🌍 === 全局排行 TOP 20 ===");
         await BuildGlobalLeaderboardAsync(sb, leaderboard);
 
-        await SendAsync(g, p, sb.ToString());
+        await SendAsync(g, p, sb.ToString(), true);
         return EventHandleResult.Block;
     }
 
@@ -365,7 +366,7 @@ public class StockCommands : CommandHandlerBase
         }
 
         var custom = Entry.Config.CustomHelpText;
-        await SendAsync(g, p, !string.IsNullOrWhiteSpace(custom) ? custom : BuildDefaultHelpText());
+        await SendAsync(g, p, !string.IsNullOrWhiteSpace(custom) ? custom : BuildDefaultHelpText(), true);
         return EventHandleResult.Block;
     }
 
@@ -397,7 +398,7 @@ public class StockCommands : CommandHandlerBase
             sb.AppendLine($"   金额: {t.Amount:N2}");
             sb.AppendLine();
         }
-        await SendAsync(g, p, sb.ToString());
+        await SendAsync(g, p, sb.ToString(), true);
         return EventHandleResult.Block;
     }
 
@@ -563,12 +564,12 @@ public class StockCommands : CommandHandlerBase
         if (!b) { return EventHandleResult.Block; }
 
         var leaderboard = await AccountService.GetLeaderboardAsync(e.FromGroup.Id, 20);
-        if (leaderboard.Count == 0) { await e.SendMessageAsync("本群还没有人注册交易账户"); return EventHandleResult.Block; }
+        if (leaderboard.Count == 0) { await SendAsync(e, null, "本群还没有人注册交易账户"); return EventHandleResult.Block; }
 
         var sb = new System.Text.StringBuilder();
         sb.AppendLine("🏆 === 本群排行 TOP 20 ===");
         await BuildLeaderboardAsync(sb, leaderboard, e.FromGroup.Id);
-        await e.SendMessageAsync(sb.ToString());
+        await SendAsync(e, null, sb.ToString(), true);
         return EventHandleResult.Block;
     }
 
@@ -679,12 +680,6 @@ public class StockCommands : CommandHandlerBase
             sb.AppendLine($"   📊 总资产: {a.TotalAsset:N0}");
             sb.AppendLine();
         }
-    }
-
-    private static void AppendRankRowsForPrivate(System.Text.StringBuilder sb, List<Account> accounts)
-    {
-        var nameCache = accounts.ToDictionary(a => a.QQ, a => a.QQ.ToString());
-        AppendRankRows(sb, accounts, nameCache);
     }
 
     private static string BuildDefaultHelpText()
@@ -909,18 +904,30 @@ public class StockCommands : CommandHandlerBase
     /// <summary>
     /// 向来源回复消息：群聊和私聊均引用原消息回复
     /// </summary>
-    private static Task SendAsync(GroupMessageContext? g, PrivateMessageContext? p, string msg)
+    private static async Task SendAsync(GroupMessageContext? g, PrivateMessageContext? p, string msg, bool forward = false)
     {
-        if (g != null)
+        if (!forward)
         {
-            g.Reply(msg);
+            if (g != null)
+            {
+                await g.ReplyAsync(msg);
+            }
+            else
+            {
+                await p!.ReplyAsync(msg);
+            }
         }
         else
         {
-            p!.Reply(msg);
+            if (g != null)
+            {
+                await Entry.Api.MessageApi.SendGroupForwardMessageAsync(g.FromGroup.Id, [msg]);
+            }
+            else
+            {
+                await Entry.Api.MessageApi.SendPrivateForwardMessageAsync(p!.FromQQ.Id, [msg]);
+            }
         }
-
-        return Task.CompletedTask;
     }
 
     // ==================== 辅助方法 ====================
