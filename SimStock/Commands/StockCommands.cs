@@ -678,6 +678,7 @@ public class StockCommands : CommandHandlerBase
             sb.AppendLine($"   💵 可用余额: {a.Balance:N0}");
             sb.AppendLine($"   📦 持仓市值: {marketValue:N0}");
             sb.AppendLine($"   📊 总资产: {a.TotalAsset:N0}");
+            sb.AppendLine($"   💹 持仓数量: {AccountService.GetPositionsAsync(a.Id).Result.Count}");
             sb.AppendLine();
         }
     }
