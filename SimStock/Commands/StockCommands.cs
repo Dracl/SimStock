@@ -142,13 +142,24 @@ public class StockCommands : CommandHandlerBase
                 var pct = totalMarketValue > 0 ? mv / totalMarketValue * 100 : 0;
                 var currentPrice = quotes != null && quotes.TryGetValue(pos.StockCode, out var q) && q.Price > 0
                     ? (decimal)q.Price : 0;
+                var lastClose = quotes != null && quotes.TryGetValue(pos.StockCode, out var q2) && q2.LastClose > 0
+                    ? (decimal)q2.LastClose : 0;
+
+                // 持仓盈亏（相对均价）
                 var gainPct = pos.AvgCost > 0 ? (currentPrice - pos.AvgCost) / pos.AvgCost * 100 : 0;
                 var gainSign = gainPct >= 0 ? "+" : "";
                 var gainEmoji = gainPct > 0 ? "🔴" : gainPct < 0 ? "🟢" : "⚪";
+
+                // 当日涨跌（相对昨收）
+                var dayChangePct = lastClose > 0 ? (currentPrice - lastClose) / lastClose * 100 : 0;
+                var daySign = dayChangePct >= 0 ? "+" : "";
+                var dayEmoji = dayChangePct > 0 ? "🔴" : dayChangePct < 0 ? "🟢" : "⚪";
+
                 sb.AppendLine($"📋 {StockCodeParser.ToDisplayCode(pos.StockCode)} {stockName ?? pos.StockCode}");
                 sb.AppendLine($"   数量: {pos.Quantity} 股");
                 sb.AppendLine($"   均价: {pos.AvgCost:F2}");
-                sb.AppendLine($"   现价: {currentPrice:F2}  {gainEmoji} {gainSign}{gainPct:F2}%");
+                sb.AppendLine($"   现价: {currentPrice:F2}  {dayEmoji} {daySign}{dayChangePct:F2}%");
+                sb.AppendLine($"   持仓盈亏: {gainEmoji} {gainSign}{gainPct:F2}%");
                 sb.AppendLine($"   成本: {cost:N2}");
                 sb.AppendLine($"   市值: {mv:N2} (占持仓 {pct:F1}%)");
             }
@@ -414,6 +425,9 @@ public class StockCommands : CommandHandlerBase
             return EventHandleResult.Block;
         }
 
+        var (th, err) = SafetyChecker.CheckTradingHours();
+        if (!th) { await SendAsync(g, p, err!); return EventHandleResult.Block; }
+
         var (account, err2) = await SafetyChecker.RequireAccountAsync(Entry.Db!, qq);
         if (account == null) { await SendAsync(g, p, err2!); return EventHandleResult.Block; }
 
@@ -450,6 +464,9 @@ public class StockCommands : CommandHandlerBase
         {
             return EventHandleResult.Block;
         }
+
+        var (th, err) = SafetyChecker.CheckTradingHours();
+        if (!th) { await SendAsync(g, p, err!); return EventHandleResult.Block; }
 
         var (account, err2) = await SafetyChecker.RequireAccountAsync(Entry.Db!, qq);
         if (account == null) { await SendAsync(g, p, err2!); return EventHandleResult.Block; }
@@ -491,6 +508,9 @@ public class StockCommands : CommandHandlerBase
         {
             return EventHandleResult.Block;
         }
+
+        var (th, err) = SafetyChecker.CheckTradingHours();
+        if (!th) { await SendAsync(g, p, err!); return EventHandleResult.Block; }
 
         var (account, err2) = await SafetyChecker.RequireAccountAsync(Entry.Db!, qq);
         if (account == null) { await SendAsync(g, p, err2!); return EventHandleResult.Block; }
