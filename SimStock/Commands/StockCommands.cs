@@ -1,10 +1,11 @@
-using System.Collections.Concurrent;
 using Another_Mirai_Native.Abstractions;
 using Another_Mirai_Native.Abstractions.Attributes;
 using Another_Mirai_Native.Abstractions.Context;
 using Another_Mirai_Native.Abstractions.Enums;
 using Another_Mirai_Native.Abstractions.Models.MessageItem;
 using SimStock.Models;
+using System.Collections.Concurrent;
+using System.Security.Cryptography.X509Certificates;
 
 namespace SimStock;
 
@@ -124,9 +125,13 @@ public class StockCommands : CommandHandlerBase
 
         var sb = new System.Text.StringBuilder();
         sb.AppendLine("💰 账户信息");
-        sb.AppendLine($"💵 可用余额: {account.Balance:N2} 元");
-        sb.AppendLine($"📦 持仓市值: {totalMarketValue:N2} 元");
-        sb.AppendLine($"📊 总资产: {account.Balance + totalMarketValue:N2} 元");
+        sb.AppendLine();
+        sb.AppendLine($"💵 可用余额: ");
+        sb.AppendLine($"{account.Balance:N2} 元");
+        sb.AppendLine($"📦 持仓市值: ");
+        sb.AppendLine($"{totalMarketValue:N2} 元");
+        sb.AppendLine($"📊 总资产: ");
+        sb.AppendLine($"{account.Balance + totalMarketValue:N2} 元");
         if (positions.Count > 0)
         {
             // 按市值倒序排列
@@ -161,7 +166,17 @@ public class StockCommands : CommandHandlerBase
                 sb.AppendLine($"   现价: {currentPrice:F2}  {dayEmoji} {daySign}{dayChangePct:F2}%");
                 sb.AppendLine($"   持仓盈亏: {gainEmoji} {gainSign}{gainPct:F2}%");
                 sb.AppendLine($"   成本: {cost:N2}");
-                sb.AppendLine($"   市值: {mv:N2} (占持仓 {pct:F1}%)");
+                sb.AppendLine($"   市值: {mv:N2}");
+                sb.AppendLine($"   (占持仓 {pct:F1}%)");
+                sb.AppendLine("—————");
+            }
+            if (positions.Count > 0)
+            {
+                int lastNewLine = sb.ToString().LastIndexOf(Environment.NewLine);
+                if (lastNewLine >= 0)
+                {
+                    sb.Remove(lastNewLine, sb.Length - lastNewLine);
+                }
             }
         }
         else
@@ -262,7 +277,7 @@ public class StockCommands : CommandHandlerBase
         var quote = await Entry.Quotes!.GetQuoteAsync(market, resolvedCode);
         var price = quote != null ? (decimal)quote.Ask1 : 0;
         var stockName = await Entry.StockNames.GetNameAsync(normalized);
-        await SendAsync(g, p, $" ✅ 市价买入成功！\n股票: {StockCodeParser.ToDisplayCode(normalized)} {stockName}\n数量: {qty} 股\n成交价: {price:F2} 元\n金额: {price * qty:N2} 元\n手续费: {fee:F2} 元");
+        await SendAsync(g, p, $" ✅ 市价买入成功！\n股票: {stockName}（{StockCodeParser.ToDisplayCode(normalized)}）\n数量: {qty} 股\n成交价: {price:F2} 元\n金额: {price * qty:N2} 元\n手续费: {fee:F2} 元");
         return EventHandleResult.Block;
     }
 
@@ -304,7 +319,7 @@ public class StockCommands : CommandHandlerBase
         if (err3 != null) { await SendAsync(g, p, err3); return EventHandleResult.Block; }
 
         var stockName = await Entry.StockNames.GetNameAsync(normalized);
-        await SendAsync(g, p, $" 🥳 梭哈买入成功！\n股票: {StockCodeParser.ToDisplayCode(normalized)} {stockName}\n数量: {qty} 股\n成交价: {price:F2} 元\n金额: {price * qty:N2} 元\n手续费: {fee:F2} 元");
+        await SendAsync(g, p, $" 🥳 梭哈买入成功！\n股票: {stockName}（{StockCodeParser.ToDisplayCode(normalized)}）\n数量: {qty} 股\n成交价: {price:F2} 元\n金额: {price * qty:N2} 元\n手续费: {fee:F2} 元");
         return EventHandleResult.Block;
     }
 
@@ -402,8 +417,9 @@ public class StockCommands : CommandHandlerBase
         foreach (var t in trades)
         {
             var dir = t.TradeType == 0 ? "🔴买入" : "🟢卖出";
+            var stockName = await Entry.StockNames.GetNameAsync(t.StockCode);
             sb.AppendLine($"⏰ {t.TradedAt:yyyy-MM-dd HH:mm}");
-            sb.AppendLine($"   {dir} {StockCodeParser.ToDisplayCode(t.StockCode)}");
+            sb.AppendLine($"   {dir} {stockName}（{StockCodeParser.ToDisplayCode(t.StockCode)}）");
             sb.AppendLine($"   数量: {t.Quantity} 股");
             sb.AppendLine($"   价格: {t.Price:F2}");
             sb.AppendLine($"   金额: {t.Amount:N2}");
@@ -444,11 +460,11 @@ public class StockCommands : CommandHandlerBase
 
         if (fee.HasValue)
         {
-            await SendAsync(g, p, $" 🎯 限价买入已立即成交！\n股票: {StockCodeParser.ToDisplayCode(normalized)} {stockName}\n数量: {qty} 股\n成交价: {currentAsk:F2} 元\n手续费: {fee:F2} 元");
+            await SendAsync(g, p, $" 🎯 限价买入已立即成交！\n股票: {stockName}（{StockCodeParser.ToDisplayCode(normalized)}）\n数量: {qty} 股\n成交价: {currentAsk:F2} 元\n手续费: {fee:F2} 元");
         }
         else
         {
-            await SendAsync(g, p, $" 📝 限价买单已挂出！\n订单号: {pendingId ?? 0}\n股票: {StockCodeParser.ToDisplayCode(normalized)} {stockName}\n数量: {qty} 股\n委托价: {price:F2} 元\n当前卖一: {currentAsk:F2} 元\n⏳ 当卖一价 ≤ {price:F2} 时自动成交");
+            await SendAsync(g, p, $" 📝 限价买单已挂出！\n订单号: {pendingId ?? 0}\n股票: {stockName}（{StockCodeParser.ToDisplayCode(normalized)}）\n数量: {qty} 股\n委托价: {price:F2} 元\n当前卖一: {currentAsk:F2} 元\n⏳ 当卖一价 ≤ {price:F2} 时自动成交");
         }
 
         return EventHandleResult.Block;
@@ -488,11 +504,11 @@ public class StockCommands : CommandHandlerBase
 
         if (fee.HasValue)
         {
-            await SendAsync(g, p, $" 🥳 限价梭哈已立即成交！\n股票: {StockCodeParser.ToDisplayCode(normalized)} {stockName}\n数量: {qty} 股\n成交价: {currentAsk:F2} 元\n手续费: {fee:F2} 元");
+            await SendAsync(g, p, $" 🥳 限价梭哈已立即成交！\n股票: {stockName}（{StockCodeParser.ToDisplayCode(normalized)}）\n数量: {qty} 股\n成交价: {currentAsk:F2} 元\n手续费: {fee:F2} 元");
         }
         else
         {
-            await SendAsync(g, p, $" 🤯 限价梭哈单已挂出！\n订单号: {pendingId ?? 0}\n股票: {StockCodeParser.ToDisplayCode(normalized)} {stockName}\n数量: {qty} 股\n委托价: {price:F2} 元\n当前卖一: {currentAsk:F2} 元\n⏳ 当卖一价 ≤ {price:F2} 时自动成交");
+            await SendAsync(g, p, $" 🤯 限价梭哈单已挂出！\n订单号: {pendingId ?? 0}\n股票: {stockName}（{StockCodeParser.ToDisplayCode(normalized)}）\n数量: {qty} 股\n委托价: {price:F2} 元\n当前卖一: {currentAsk:F2} 元\n⏳ 当卖一价 ≤ {price:F2} 时自动成交");
         }
 
         return EventHandleResult.Block;
@@ -528,11 +544,11 @@ public class StockCommands : CommandHandlerBase
 
         if (fee.HasValue)
         {
-            await SendAsync(g, p, $" 🎯 限价卖出已立即成交！\n股票: {StockCodeParser.ToDisplayCode(normalized)} {stockName}\n数量: {qty} 股\n成交价: {currentBid:F2} 元\n手续费: {fee:F2} 元");
+            await SendAsync(g, p, $" 🎯 限价卖出已立即成交！\n股票: {stockName}（{StockCodeParser.ToDisplayCode(normalized)}）\n数量: {qty} 股\n成交价: {currentBid:F2} 元\n手续费: {fee:F2} 元");
         }
         else
         {
-            await SendAsync(g, p, $" 📝 限价卖单已挂出！\n订单号: {pendingId ?? 0}\n股票: {StockCodeParser.ToDisplayCode(normalized)} {stockName}\n数量: {qty} 股\n委托价: {price:F2} 元\n当前买一: {currentBid:F2} 元\n⏳ 当买一价 ≥ {price:F2} 时自动成交");
+            await SendAsync(g, p, $" 📝 限价卖单已挂出！\n订单号: {pendingId ?? 0}\n股票: {stockName}（{StockCodeParser.ToDisplayCode(normalized)}）\n数量: {qty} 股\n委托价: {price:F2} 元\n当前买一: {currentBid:F2} 元\n⏳ 当买一价 ≥ {price:F2} 时自动成交");
         }
 
         return EventHandleResult.Block;
@@ -561,7 +577,7 @@ public class StockCommands : CommandHandlerBase
         var changeEmoji = changePct > 0 ? "🔴" : changePct < 0 ? "🟢" : "⚪";
 
         var sb = new System.Text.StringBuilder();
-        sb.AppendLine($"📈 {name}{typeTag} {StockCodeParser.ToDisplayCode(normalized)} 实时行情");
+        sb.AppendLine($"📈 {name}（{StockCodeParser.ToDisplayCode(normalized)}）{typeTag} 实时行情");
         sb.AppendLine($"💹 现价: {quote.Price:F2}");
         sb.AppendLine($"📅 昨收: {quote.LastClose:F2}");
         sb.AppendLine($"📊 涨跌: {changeEmoji} {changeSign}{changePct:F2}%");
@@ -661,7 +677,7 @@ public class StockCommands : CommandHandlerBase
         var quote = await Entry.Quotes!.GetQuoteAsync(market, resolvedCode);
         var price = quote != null ? (decimal)quote.Bid1 : 0;
         var stockName = await Entry.StockNames.GetNameAsync(normalized);
-        await SendAsync(g, p, $" ✅ 市价卖出成功！\n股票: {StockCodeParser.ToDisplayCode(normalized)} {stockName}\n数量: {qty} 股\n成交价: {price:F2} 元\n金额: {price * qty:N2} 元\n手续费: {fee:F2} 元");
+        await SendAsync(g, p, $" ✅ 市价卖出成功！\n股票: {stockName}（{StockCodeParser.ToDisplayCode(normalized)}）\n数量: {qty} 股\n成交价: {price:F2} 元\n金额: {price * qty:N2} 元\n手续费: {fee:F2} 元");
         return EventHandleResult.Block;
     }
 
@@ -695,10 +711,10 @@ public class StockCommands : CommandHandlerBase
             var medal = i == 0 ? "🥇" : i == 1 ? "🥈" : i == 2 ? "🥉" : $"{i + 1}.";
             var name = nameCache.TryGetValue(a.QQ, out var n) ? n : a.QQ.ToString();
             sb.AppendLine($"{medal} {name}");
-            sb.AppendLine($"   💵 可用余额: {a.Balance:N0}");
-            sb.AppendLine($"   📦 持仓市值: {marketValue:N0}");
             sb.AppendLine($"   📊 总资产: {a.TotalAsset:N0}");
+            sb.AppendLine($"   💵 可用余额: {a.Balance:N0}");
             sb.AppendLine($"   💹 持仓数量: {AccountService.GetPositionsAsync(a.Id).Result.Count}");
+            sb.AppendLine($"   📦 持仓市值: {marketValue:N0}");
             sb.AppendLine();
         }
     }
