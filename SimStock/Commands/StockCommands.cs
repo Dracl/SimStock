@@ -160,7 +160,7 @@ public class StockCommands : CommandHandlerBase
                 var daySign = dayChangePct >= 0 ? "+" : "";
                 var dayEmoji = dayChangePct > 0 ? "🔴" : dayChangePct < 0 ? "🟢" : "⚪";
 
-                sb.AppendLine($"📋 {StockCodeParser.ToDisplayCode(pos.StockCode)} {stockName ?? pos.StockCode}");
+                sb.AppendLine($"📋 {stockName ?? pos.StockCode}（{StockCodeParser.ToDisplayCode(pos.StockCode)}）");
                 sb.AppendLine($"   数量: {pos.Quantity} 股");
                 sb.AppendLine($"   均价: {pos.AvgCost:F2}");
                 sb.AppendLine($"   现价: {currentPrice:F2}  {dayEmoji} {daySign}{dayChangePct:F2}%");
