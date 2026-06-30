@@ -201,6 +201,7 @@ public partial class AdminWindow : Window
         GroupWhitelistInput.Text = string.Join(", ", Entry.Config.GroupWhitelist);
         UserBlacklistInput.Text = string.Join(", ", Entry.Config.UserBlacklist);
         CustomHelpTextInput.Text = Entry.Config.CustomHelpText;
+        HelpForwardSend.IsChecked = Entry.Config.HelpForwardSend;
         LoadCommandTemplates();
     }
 
@@ -446,6 +447,8 @@ public partial class AdminWindow : Window
                     .ToDictionary(r => r.Name, r => r.Template);
                 await Entry.Config.SaveTriggersAsync(db, triggers);
             }
+
+            await Entry.Config.SetAsync(db, "HelpForwardSend", (HelpForwardSend.IsChecked ?? false).ToString());
 
             MessageBox.Show("设置已保存", "提示", MessageBoxButton.OK, MessageBoxImage.Information);
             LoadSettings();

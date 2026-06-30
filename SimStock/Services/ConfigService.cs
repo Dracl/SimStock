@@ -15,6 +15,8 @@ public class ConfigService
 
     public string CustomHelpText { get; set; } = "";
 
+    public bool HelpForwardSend { get; set; } = true;
+
     public HashSet<long> GroupWhitelist { get; set; } = [];
 
     public HashSet<long> UserBlacklist { get; set; } = [];
@@ -128,6 +130,11 @@ public class ConfigService
         if (dict.TryGetValue("UserBlacklist", out var bl) && !string.IsNullOrWhiteSpace(bl))
         {
             UserBlacklist = ParseIdList(bl);
+        }
+
+        if (dict.TryGetValue("HelpForwardSend", out var hfs))
+        {
+            HelpForwardSend = hfs.Equals("true", StringComparison.CurrentCultureIgnoreCase);
         }
     }
 

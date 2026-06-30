@@ -392,7 +392,7 @@ public class StockCommands : CommandHandlerBase
         }
 
         var custom = Entry.Config.CustomHelpText;
-        await SendAsync(g, p, !string.IsNullOrWhiteSpace(custom) ? custom : BuildDefaultHelpText(), true);
+        await SendAsync(g, p, !string.IsNullOrWhiteSpace(custom) ? custom : BuildDefaultHelpText(), Entry.Config.HelpForwardSend);
         return EventHandleResult.Block;
     }
 
