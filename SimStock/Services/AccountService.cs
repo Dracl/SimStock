@@ -205,7 +205,7 @@ public static class AccountService
 
         Dictionary<string, TdxProtocol.Models.QuoteResult>? quotes = null;
         try { quotes = await Entry.Quotes!.GetQuotesBatchAsync(uniqueStocks); }
-        catch { /* 行情不可用时跳过 */ }
+        catch (Exception ex) { Entry.Api.Logger.Warn("账户服务", $"批量获取行情失败: {ex.Message}"); }
         if (quotes == null) return;
 
         // 按账户分组计算市值

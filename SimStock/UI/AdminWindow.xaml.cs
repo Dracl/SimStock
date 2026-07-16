@@ -155,7 +155,11 @@ public partial class AdminWindow : Window
 
             UsersGrid.ItemsSource = users;
         }
-        catch (Exception ex) { MessageBox.Show($"加载用户数据失败: {ex.Message}"); }
+        catch (Exception ex)
+        {
+            Entry.Api.Logger.Warn("管理界面", $"加载用户数据失败: {ex.Message}");
+            MessageBox.Show($"加载用户数据失败: {ex.Message}");
+        }
     }
 
     private async Task LoadPositions()
@@ -168,7 +172,11 @@ public partial class AdminWindow : Window
                 .ToListAsync();
             PositionsGrid.ItemsSource = positions;
         }
-        catch (Exception ex) { MessageBox.Show($"加载持仓数据失败: {ex.Message}"); }
+        catch (Exception ex)
+        {
+            Entry.Api.Logger.Warn("管理界面", $"加载持仓数据失败: {ex.Message}");
+            MessageBox.Show($"加载持仓数据失败: {ex.Message}");
+        }
     }
 
     private async Task LoadOrders()
@@ -179,7 +187,11 @@ public partial class AdminWindow : Window
                 .OrderBy(o => o.Id, SqlSugar.OrderByType.Desc).Take(200).ToListAsync();
             OrdersGrid.ItemsSource = orders;
         }
-        catch (Exception ex) { MessageBox.Show($"加载挂单数据失败: {ex.Message}"); }
+        catch (Exception ex)
+        {
+            Entry.Api.Logger.Warn("管理界面", $"加载挂单数据失败: {ex.Message}");
+            MessageBox.Show($"加载挂单数据失败: {ex.Message}");
+        }
     }
 
     private async Task LoadTrades()
@@ -190,7 +202,11 @@ public partial class AdminWindow : Window
                 .OrderBy(t => t.Id, SqlSugar.OrderByType.Desc).Take(200).ToListAsync();
             TradesGrid.ItemsSource = trades;
         }
-        catch (Exception ex) { MessageBox.Show($"加载交易记录失败: {ex.Message}"); }
+        catch (Exception ex)
+        {
+            Entry.Api.Logger.Warn("管理界面", $"加载交易记录失败: {ex.Message}");
+            MessageBox.Show($"加载交易记录失败: {ex.Message}");
+        }
     }
 
     private void LoadSettings()
@@ -230,7 +246,11 @@ public partial class AdminWindow : Window
             MessageBox.Show("持仓已删除");
             await LoadPositions();
         }
-        catch (Exception ex) { MessageBox.Show($"删除失败: {ex.Message}"); }
+        catch (Exception ex)
+        {
+            Entry.Api.Logger.Warn("管理界面", $"删除持仓失败: {ex.Message}");
+            MessageBox.Show($"删除失败: {ex.Message}");
+        }
     }
 
     private async void SavePositions_Click(object sender, RoutedEventArgs e)
@@ -277,7 +297,11 @@ public partial class AdminWindow : Window
             MessageBox.Show("保存成功");
             await LoadPositions();
         }
-        catch (Exception ex) { MessageBox.Show($"保存失败: {ex.Message}"); }
+        catch (Exception ex)
+        {
+            Entry.Api.Logger.Warn("管理界面", $"保存持仓修改失败: {ex.Message}");
+            MessageBox.Show($"保存失败: {ex.Message}");
+        }
     }
 
     private async void RefreshOrders_Click(object sender, RoutedEventArgs e) => await LoadOrders();
@@ -305,7 +329,11 @@ public partial class AdminWindow : Window
             MessageBox.Show("账户已重置");
             await LoadUsers();
         }
-        catch (Exception ex) { MessageBox.Show($"操作失败: {ex.Message}"); }
+        catch (Exception ex)
+        {
+            Entry.Api.Logger.Warn("管理界面", $"重置账户失败: {ex.Message}");
+            MessageBox.Show($"操作失败: {ex.Message}");
+        }
     }
 
     private async void ForceCancelOrder_Click(object sender, RoutedEventArgs e)
@@ -337,7 +365,11 @@ public partial class AdminWindow : Window
             MessageBox.Show("订单已撤销");
             await LoadOrders();
         }
-        catch (Exception ex) { MessageBox.Show($"操作失败: {ex.Message}"); }
+        catch (Exception ex)
+        {
+            Entry.Api.Logger.Warn("管理界面", $"强制撤单失败: {ex.Message}");
+            MessageBox.Show($"操作失败: {ex.Message}");
+        }
     }
 
     private async void SearchUser_Click(object sender, RoutedEventArgs e)
@@ -455,6 +487,7 @@ public partial class AdminWindow : Window
         }
         catch (Exception ex)
         {
+            Entry.Api.Logger.Warn("管理界面", $"保存设置失败: {ex.Message}");
             MessageBox.Show($"保存失败: {ex.Message}", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
@@ -488,6 +521,7 @@ public partial class AdminWindow : Window
         }
         catch (Exception ex)
         {
+            Entry.Api.Logger.Warn("管理界面", $"加载群列表失败: {ex.Message}");
             MessageBox.Show($"加载群列表失败: {ex.Message}");
         }
     }
@@ -523,13 +557,18 @@ public partial class AdminWindow : Window
                         : admin.QQ.ToString();
                     displayItems.Add($"{name} (QQ:{admin.QQ})");
                 }
-                catch { displayItems.Add($"QQ:{admin.QQ}"); }
+                catch (Exception ex)
+                {
+                    Entry.Api.Logger.Warn("管理界面", $"获取群成员信息失败: {ex.Message}");
+                    displayItems.Add($"QQ:{admin.QQ}");
+                }
             }
 
             AdminListBox.ItemsSource = displayItems;
         }
         catch (Exception ex)
         {
+            Entry.Api.Logger.Warn("管理界面", $"加载管理员列表失败: {ex.Message}");
             MessageBox.Show($"加载管理员列表失败: {ex.Message}");
         }
     }
@@ -565,6 +604,7 @@ public partial class AdminWindow : Window
         }
         catch (Exception ex)
         {
+            Entry.Api.Logger.Warn("管理界面", $"添加管理员失败: {ex.Message}");
             MessageBox.Show($"添加失败: {ex.Message}");
         }
     }
@@ -606,6 +646,7 @@ public partial class AdminWindow : Window
         }
         catch (Exception ex)
         {
+            Entry.Api.Logger.Warn("管理界面", $"移除管理员失败: {ex.Message}");
             MessageBox.Show($"移除失败: {ex.Message}");
         }
     }

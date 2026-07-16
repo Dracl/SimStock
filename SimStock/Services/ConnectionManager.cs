@@ -51,6 +51,7 @@ public class ConnectionManager : IDisposable
 
             if (_bestIp == null)
             {
+                Entry.Api.Logger.Warn("连接管理", "无法获取最佳服务器IP，行情服务不可用");
                 return null;
             }
 
@@ -59,11 +60,12 @@ public class ConnectionManager : IDisposable
             _client = new TdxClient();
             TdxClient.Logger = msg => Entry.Api.Logger.Debug("TDX", msg);
             _client.Connect(_bestIp, _bestPort);
+            Entry.Api.Logger.Info("连接管理", $"已连接 TDX {_bestIp}:{_bestPort}");
             return _client;
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[ConnectionManager] 连接失败: {ex.Message}");
+            Entry.Api.Logger.Warn("连接管理", $"TDX连接失败: {ex.Message}");
             _client?.Dispose();
             _client = null;
             return null;
@@ -115,8 +117,15 @@ public class ConnectionManager : IDisposable
                 _bestPort = results[0].Server.Port;
                 _lastBestIpCheck = DateTime.Now;
             }
+            else
+            {
+                Entry.Api.Logger.Warn("连接管理", "最佳服务器发现完成，但未找到可用服务器");
+            }
         }
-        catch { /* 服务器发现失败，继续使用缓存 */ }
+        catch (Exception ex)
+        {
+            Entry.Api.Logger.Warn("连接管理", $"最佳服务器发现失败: {ex.Message}");
+        }
     }
 
     private async Task RefreshBestIpIfNeededAsync()
@@ -134,7 +143,10 @@ public class ConnectionManager : IDisposable
                     _lastBestIpCheck = cached.UpdatedAt;
                 }
             }
-            catch { /* 缓存损坏 */ }
+            catch (Exception ex)
+            {
+                Entry.Api.Logger.Warn("连接管理", $"最佳服务器缓存读取失败: {ex.Message}");
+            }
         }
 
         // 检查是否需要刷新（每天一次，或者还没有IP）

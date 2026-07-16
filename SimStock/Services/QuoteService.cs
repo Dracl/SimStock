@@ -62,7 +62,7 @@ public class QuoteService
                     if (results.Length > 0)
                         foundMarket ??= mkt;
                 }
-                catch { }
+                catch (Exception ex) { Entry.Api.Logger.Warn("行情服务", $"查询市场{mkt}股票{codeOnly}失败: {ex.Message}"); }
             }
 
             if (foundMarket.HasValue)
@@ -77,7 +77,7 @@ public class QuoteService
                     if (type.EndsWith("_A_STOCK"))
                         return (mkt, codeOnly, StockCodeParser.NormalizeCode(mkt, codeOnly), null);
                 }
-                catch { }
+                catch (Exception ex) { Entry.Api.Logger.Warn("行情服务", $"判断股票类型失败 {mkt}/{codeOnly}: {ex.Message}"); }
             }
         }
 
@@ -107,6 +107,7 @@ public class QuoteService
         var client = await Entry.ConnMgr!.EnsureConnectedAsync();
         if (client == null)
         {
+            Entry.Api.Logger.Warn("行情服务", "无法连接行情源，GetQuoteAsync 返回 null");
             return null;
         }
 
@@ -115,10 +116,15 @@ public class QuoteService
             var cmd = new GetSecurityQuotesCmd();
             cmd.SetParams([(market, code)]);
             var results = cmd.ParseResponse(client.SendPacket(cmd.BuildRequest()));
+            if (results.Length == 0)
+            {
+                Entry.Api.Logger.Warn("行情服务", $"服务器返回空结果 (market={market}, code={code})");
+            }
             return results.FirstOrDefault();
         }
-        catch
+        catch (Exception ex)
         {
+            Entry.Api.Logger.Warn("行情服务", $"获取单股行情失败: {ex.Message}");
             return null;
         }
     }
@@ -131,6 +137,7 @@ public class QuoteService
         var client = await Entry.ConnMgr!.EnsureConnectedAsync();
         if (client == null)
         {
+            Entry.Api.Logger.Warn("行情服务", "无法连接行情源，GetQuotesBatchAsync 返回 null");
             return null;
         }
 
@@ -140,6 +147,11 @@ public class QuoteService
             cmd.SetParams(stocks.Select(s => (s.market, s.code)).ToArray());
             var results = cmd.ParseResponse(client.SendPacket(cmd.BuildRequest()));
 
+            if (results.Length == 0)
+            {
+                Entry.Api.Logger.Warn("行情服务", $"服务器返回空结果，请求了 {stocks.Count} 只股票");
+            }
+
             var dict = new Dictionary<string, QuoteResult>();
             foreach (var r in results)
             {
@@ -148,8 +160,9 @@ public class QuoteService
 
             return dict;
         }
-        catch
+        catch (Exception ex)
         {
+            Entry.Api.Logger.Warn("行情服务", $"批量获取行情失败: {ex.Message}");
             return null;
         }
     }

@@ -220,7 +220,10 @@ public class MatchingEngine : IDisposable
                                 }
                             }
                         }
-                        catch { /* 通知失败不影响撮合 */ }
+                        catch (Exception ex)
+                        {
+                            Entry.Api.Logger.Warn("撮合引擎", $"成交通知发送失败: {ex.Message}");
+                        }
                     }
                 }
 
@@ -230,8 +233,9 @@ public class MatchingEngine : IDisposable
             {
                 break;
             }
-            catch (Exception)
+            catch (Exception ex)
             {
+                Entry.Api.Logger.Warn("撮合引擎", $"主循环异常: {ex.Message}");
                 _connMgr.Disconnect();
                 await Task.Delay(TimeSpan.FromSeconds(10), ct);
             }
@@ -327,7 +331,10 @@ public class MatchingEngine : IDisposable
 
                     await Entry.Api.MessageApi.SendGroupMessageAsync(sourceGroupId, sb.ToString());
                 }
-                catch { /* 发送失败不影响 */ }
+                catch (Exception ex)
+                {
+                    Entry.Api.Logger.Warn("撮合引擎", $"收盘撤单通知发送失败: {ex.Message}");
+                }
             }
 
             // 私聊来源：逐人发私聊
@@ -343,10 +350,16 @@ public class MatchingEngine : IDisposable
                               $"💲 委托价: {order.Price:F2}";
                     await Entry.Api.MessageApi.SendPrivateMessageAsync(qq, msg);
                 }
-                catch { /* 发送失败不影响 */ }
+                catch (Exception ex)
+                {
+                    Entry.Api.Logger.Warn("撮合引擎", $"收盘撤单通知发送失败: {ex.Message}");
+                }
             }
         }
-        catch { /* 撤单失败不影响主循环 */ }
+        catch (Exception ex)
+        {
+            Entry.Api.Logger.Warn("撮合引擎", $"收盘撤单处理异常: {ex.Message}");
+        }
     }
 
     /// <summary>
@@ -382,7 +395,10 @@ public class MatchingEngine : IDisposable
                 mb.Text(msg);
                 await Entry.Api.MessageApi.SendGroupMessageAsync(order.SourceGroupId!.Value, mb.Build());
             }
-            catch { /* 最终失败放弃 */ }
+            catch (Exception ex)
+            {
+                Entry.Api.Logger.Warn("撮合引擎", $"成交通知最终发送失败: {ex.Message}");
+            }
         }
     }
 
