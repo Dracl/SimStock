@@ -47,6 +47,8 @@ public class ConfigService
         ["GlobalRank"] = "/全局排行",
         ["History"] = "/历史订单",
         ["Help"] = "/股票帮助",
+        ["ClearOne"] = "/清仓",
+        ["ClearAll"] = "/全部清仓",
     };
 
     /// <summary>Regex 型命令的固定参数后缀（不可修改，防止破坏命名组）</summary>
@@ -65,6 +67,7 @@ public class ConfigService
         ["AllIn"] = @"\s+(?<code>\w{2,8})",
         ["LimitAllIn"] = @"\s+(?<code>\w{2,8})\s+(?<price>\d+(\.\d+)?)",
         ["Cancel"] = @"\s+(?<orderId>\d+)",
+        ["ClearOne"] = @"\s+(?<code>\w{2,8})",
     };
 
     /// <summary>获取当前触发词</summary>
