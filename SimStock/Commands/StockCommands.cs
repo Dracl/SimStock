@@ -65,6 +65,8 @@ public class StockCommands : CommandHandlerBase
 
     public string SellCmd => Entry.Config.GetCommandTemplate("Sell");
 
+    public string SellAllCmd => Entry.Config.GetCommandTemplate("SellAll");
+
     public string WithdrawCmd => Entry.Config.GetCommandTemplate("Withdraw");
 
     [DynamicCommand(nameof(AccountCmd), MatchMode.FullMatch)]
@@ -833,6 +835,46 @@ public class StockCommands : CommandHandlerBase
         return EventHandleResult.Block;
     }
 
+    [DynamicCommand(nameof(SellAllCmd), MatchMode.Regex)]
+    public async Task<EventHandleResult> CmdSellAll(GroupMessageContext? g, PrivateMessageContext? p, string code)
+    {
+        var qq = GetQQ(g, p);
+        var (groupId, sourceGroupId, _) = ResolveCtx(g, p);
+        if (!await CheckAccess(g, p, qq))
+        {
+            return EventHandleResult.Block;
+        }
+
+        var (th, err) = SafetyChecker.CheckTradingHours();
+        if (!th) { await SendAsync(g, p, err!); return EventHandleResult.Block; }
+
+        var (account, err2) = await SafetyChecker.RequireAccountAsync(Entry.Db!, qq);
+        if (account == null) { await SendAsync(g, p, err2!); return EventHandleResult.Block; }
+
+        var (market, resolvedCode, normalized, resolveErr) = await Entry.Quotes!.ResolveCodeAsync(code);
+        if (resolveErr != null && market == 0) { await SendAsync(g, p, resolveErr); return EventHandleResult.Block; }
+
+        // 获取持仓数量
+        var positions = await AccountService.GetPositionsAsync(account.Id);
+        var pos = positions.FirstOrDefault(p => p.StockCode == normalized);
+        if (pos == null || pos.Quantity <= 0)
+        {
+            await SendAsync(g, p, $"⚠️ 您没有持有 {code}，无法现价卖出");
+            return EventHandleResult.Block;
+        }
+
+        int qty = pos.Quantity;
+
+        var (order, err3, fee) = await TradingService.MarketSellAsync(qq, normalized, qty, sourceGroupId);
+        if (err3 != null) { await SendAsync(g, p, err3); return EventHandleResult.Block; }
+
+        var quote = await Entry.Quotes!.GetQuoteAsync(market, resolvedCode);
+        var price = quote != null ? (decimal)quote.Bid1 : 0;
+        var stockName = await Entry.StockNames.GetNameAsync(normalized);
+        await SendAsync(g, p, $" ✅ 现价卖出成功！\n股票: {stockName}（{StockCodeParser.ToDisplayCode(normalized)}）\n数量: {qty} 股\n成交价: {price:F2} 元\n金额: {price * qty:N2} 元\n手续费: {fee:F2} 元");
+        return EventHandleResult.Block;
+    }
+
     // ==================== 账户管理 ====================
     [DynamicCommand(nameof(WithdrawCmd), MatchMode.Regex)]
     public async Task<EventHandleResult> CmdWithdraw(GroupMessageContext? g, PrivateMessageContext? p, decimal amount)
@@ -897,6 +939,7 @@ public class StockCommands : CommandHandlerBase
             💹 【交易操作】
             {t("Buy")} 代码 数量 市价买入
             {t("Sell")} 代码 数量 市价卖出
+            {t("SellAll")} 代码     现价卖出（全仓卖出）
             {t("AllIn")} 代码     梭哈买入（余额全仓）
             {t("LimitAllIn")} 代码 价格  限价梭哈（余额全仓）
             {t("LimitBuy")} 代码 数量 价格  挂限价买单
