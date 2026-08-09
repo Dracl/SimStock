@@ -39,6 +39,7 @@ public class ConfigService
         ["Buy"] = "/买入股票",
         ["LimitBuy"] = "/限价买入",
         ["Sell"] = "/卖出股票",
+        ["SellAll"] = "/现价卖出",
         ["LimitSell"] = "/限价卖出",
         ["AllIn"] = "/梭哈",
         ["LimitAllIn"] = "/限价梭哈",
@@ -47,6 +48,8 @@ public class ConfigService
         ["GlobalRank"] = "/全局排行",
         ["History"] = "/历史订单",
         ["Help"] = "/股票帮助",
+        ["ClearOne"] = "/清仓",
+        ["ClearAll"] = "/全部清仓",
     };
 
     /// <summary>Regex 型命令的固定参数后缀（不可修改，防止破坏命名组）</summary>
@@ -61,10 +64,12 @@ public class ConfigService
         ["Buy"] = @"\s+(?<code>\w{2,8})\s+(?<qty>\d+)",
         ["LimitBuy"] = @"\s+(?<code>\w{2,8})\s+(?<qty>\d+)\s+(?<price>\d+(\.\d+)?)",
         ["Sell"] = @"\s+(?<code>\w{2,8})\s+(?<qty>\d+)",
+        ["SellAll"] = @"\s+(?<code>\w{2,8})",
         ["LimitSell"] = @"\s+(?<code>\w{2,8})\s+(?<qty>\d+)\s+(?<price>\d+(\.\d+)?)",
         ["AllIn"] = @"\s+(?<code>\w{2,8})",
         ["LimitAllIn"] = @"\s+(?<code>\w{2,8})\s+(?<price>\d+(\.\d+)?)",
         ["Cancel"] = @"\s+(?<orderId>\d+)",
+        ["ClearOne"] = @"\s+(?<code>\w{2,8})",
     };
 
     /// <summary>获取当前触发词</summary>
