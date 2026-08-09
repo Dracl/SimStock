@@ -37,6 +37,10 @@ public class StockCommands : CommandHandlerBase
 
     public string CancelCmd => Entry.Config.GetCommandTemplate("Cancel");
 
+    public string ClearAllCmd => Entry.Config.GetCommandTemplate("ClearAll");
+
+    public string ClearOneCmd => Entry.Config.GetCommandTemplate("ClearOne");
+
     public string DepositCmd => Entry.Config.GetCommandTemplate("Deposit");
 
     public string GlobalRankCmd => Entry.Config.GetCommandTemplate("GlobalRank");
@@ -681,6 +685,154 @@ public class StockCommands : CommandHandlerBase
         return EventHandleResult.Block;
     }
 
+    // ==================== 清仓操作 ====================
+    [DynamicCommand(nameof(ClearOneCmd), MatchMode.Regex)]
+    public async Task<EventHandleResult> CmdClearOne(GroupMessageContext? g, PrivateMessageContext? p, string code)
+    {
+        var qq = GetQQ(g, p);
+        var (groupId, sourceGroupId, _) = ResolveCtx(g, p);
+        if (!await CheckAccess(g, p, qq))
+        {
+            return EventHandleResult.Block;
+        }
+
+        var (th, err) = SafetyChecker.CheckTradingHours();
+        if (!th) { await SendAsync(g, p, err!); return EventHandleResult.Block; }
+
+        var (account, err2) = await SafetyChecker.RequireAccountAsync(Entry.Db!, qq);
+        if (account == null) { await SendAsync(g, p, err2!); return EventHandleResult.Block; }
+
+        var (market, resolvedCode, normalized, resolveErr) = await Entry.Quotes!.ResolveCodeAsync(code);
+        if (resolveErr != null && market == 0) { await SendAsync(g, p, resolveErr); return EventHandleResult.Block; }
+
+        // 获取持仓数量
+        var positions = await AccountService.GetPositionsAsync(account.Id);
+        var pos = positions.FirstOrDefault(p => p.StockCode == normalized);
+        if (pos == null || pos.Quantity <= 0)
+        {
+            await SendAsync(g, p, $"⚠️ 您没有持有 {code}，无法清仓");
+            return EventHandleResult.Block;
+        }
+
+        int qty = pos.Quantity;
+
+        var (order, err3, fee) = await TradingService.MarketSellAsync(qq, normalized, qty, sourceGroupId);
+        if (err3 != null) { await SendAsync(g, p, err3); return EventHandleResult.Block; }
+
+        var quote = await Entry.Quotes!.GetQuoteAsync(market, resolvedCode);
+        var price = quote != null ? (decimal)quote.Bid1 : 0;
+        var stockName = await Entry.StockNames.GetNameAsync(normalized);
+        await SendAsync(g, p, $" ✅ 清仓成功！\n股票: {stockName}（{StockCodeParser.ToDisplayCode(normalized)}）\n数量: {qty} 股\n成交价: {price:F2} 元\n金额: {price * qty:N2} 元\n手续费: {fee:F2} 元");
+        return EventHandleResult.Block;
+    }
+
+    [DynamicCommand(nameof(ClearAllCmd), MatchMode.FullMatch)]
+    public async Task<EventHandleResult> CmdClearAll(GroupMessageContext? g, PrivateMessageContext? p)
+    {
+        var qq = GetQQ(g, p);
+        var (groupId, sourceGroupId, _) = ResolveCtx(g, p);
+        if (!await CheckAccess(g, p, qq))
+        {
+            return EventHandleResult.Block;
+        }
+
+        var (th, err) = SafetyChecker.CheckTradingHours();
+        if (!th) { await SendAsync(g, p, err!); return EventHandleResult.Block; }
+
+        var (account, err2) = await SafetyChecker.RequireAccountAsync(Entry.Db!, qq);
+        if (account == null) { await SendAsync(g, p, err2!); return EventHandleResult.Block; }
+
+        // 获取所有持仓
+        var positions = await AccountService.GetPositionsAsync(account.Id);
+        if (positions.Count == 0)
+        {
+            await SendAsync(g, p, "⚠️ 您当前无持仓，无需清仓");
+            return EventHandleResult.Block;
+        }
+
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("🔄 开始清仓...");
+
+        int successCount = 0;
+        int skipCount = 0;
+
+        foreach (var pos in positions)
+        {
+            var parsed = StockCodeParser.ParseNormalized(pos.StockCode);
+            if (!parsed.HasValue)
+            {
+                sb.AppendLine($"⚠️ {pos.StockCode}: 股票代码格式错误");
+                skipCount++;
+                continue;
+            }
+
+            var (market, code) = parsed.Value;
+
+            // 检查 T+1
+            var t1Check = await SafetyChecker.CheckT1RuleAsync(Entry.Db!, account.Id, pos.StockCode);
+            if (!t1Check.passed)
+            {
+                sb.AppendLine($"⚠️ {pos.StockCode}: {t1Check.error}");
+                skipCount++;
+                continue;
+            }
+
+            // 获取行情
+            var quote = await Entry.Quotes!.GetQuoteAsync(market, code);
+            if (quote == null)
+            {
+                sb.AppendLine($"⚠️ {pos.StockCode}: 行情获取失败");
+                skipCount++;
+                continue;
+            }
+
+            // 检查停牌
+            var suspensionCheck = SafetyChecker.CheckSuspension(quote.Bid1, quote.Ask1);
+            if (!suspensionCheck.passed)
+            {
+                sb.AppendLine($"⚠️ {pos.StockCode}: {suspensionCheck.error}");
+                skipCount++;
+                continue;
+            }
+
+            // 检查涨跌停
+            var priceCheck = SafetyChecker.CheckPriceLimit(quote.LastClose, quote.Price, isBuy: false);
+            if (!priceCheck.passed)
+            {
+                sb.AppendLine($"⚠️ {pos.StockCode}: {priceCheck.error}");
+                skipCount++;
+                continue;
+            }
+
+            if (quote.Bid1 <= 0)
+            {
+                sb.AppendLine($"⚠️ {pos.StockCode}: 无买盘，无法卖出");
+                skipCount++;
+                continue;
+            }
+
+            // 执行卖出
+            var (order, sellErr, fee) = await TradingService.MarketSellAsync(qq, pos.StockCode, pos.Quantity, sourceGroupId);
+            if (sellErr != null)
+            {
+                sb.AppendLine($"⚠️ {pos.StockCode}: {sellErr}");
+                skipCount++;
+            }
+            else
+            {
+                var stockName = await Entry.StockNames.GetNameAsync(pos.StockCode);
+                var sellPrice = (decimal)quote.Bid1;
+                sb.AppendLine($"✅ {stockName}（{StockCodeParser.ToDisplayCode(pos.StockCode)}） 卖出 {pos.Quantity} 股 @ {sellPrice:F2} 元");
+                successCount++;
+            }
+        }
+
+        sb.AppendLine($"\n📊 清仓完成: 成功 {successCount} 只, 跳过 {skipCount} 只");
+
+        await SendAsync(g, p, sb.ToString());
+        return EventHandleResult.Block;
+    }
+
     // ==================== 账户管理 ====================
     [DynamicCommand(nameof(WithdrawCmd), MatchMode.Regex)]
     public async Task<EventHandleResult> CmdWithdraw(GroupMessageContext? g, PrivateMessageContext? p, decimal amount)
@@ -750,6 +902,8 @@ public class StockCommands : CommandHandlerBase
             {t("LimitBuy")} 代码 数量 价格  挂限价买单
             {t("LimitSell")} 代码 数量 价格  挂限价卖单
             {t("Cancel")} 订单号   撤销挂单
+            {t("ClearOne")} 代码     清仓指定股票（全仓卖出）
+            {t("ClearAll")}          清仓全部持仓
 
             🔍 【信息查询】
             {t("Rank")}          本群交易排行榜
