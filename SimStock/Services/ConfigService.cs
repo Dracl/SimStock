@@ -13,6 +13,12 @@ public class ConfigService
 
     public decimal InitialCapital { get; set; } = 1_000_000m;
 
+    /// <summary>授信额度（固定额度，默认 10 万），用户可自定义</summary>
+    public decimal CreditAmount { get; set; } = 100000m;
+
+    /// <summary>日利率（默认万分之五 0.05%）</summary>
+    public decimal CreditInterestRate { get; set; } = 0.0005m;
+
     public string CustomHelpText { get; set; } = "";
 
     public bool HelpForwardSend { get; set; } = true;
@@ -50,6 +56,9 @@ public class ConfigService
         ["Help"] = "/股票帮助",
         ["ClearOne"] = "/清仓",
         ["ClearAll"] = "/全部清仓",
+        ["Credit"] = "/授信额度",
+        ["CreditUse"] = "/使用授信",
+        ["CreditRepay"] = "/偿还授信",
     };
 
     /// <summary>Regex 型命令的固定参数后缀（不可修改，防止破坏命名组）</summary>
@@ -69,6 +78,8 @@ public class ConfigService
         ["LimitAllIn"] = @"\s+(?<code>\w{2,8})\s+(?<price>\d+(\.\d+)?)",
         ["Cancel"] = @"\s+(?<orderId>\d+)",
         ["ClearOne"] = @"\s+(?<code>\w{2,8})",
+        ["CreditUse"] = @"\s+(?<amount>\d+(\.\d+)?m?)",
+        ["CreditRepay"] = @"\s+(?<amount>\d+(\.\d+)?)",
     };
 
     /// <summary>获取当前触发词</summary>
@@ -139,6 +150,16 @@ public class ConfigService
         if (dict.TryGetValue("HelpForwardSend", out var hfs))
         {
             HelpForwardSend = hfs.Equals("true", StringComparison.CurrentCultureIgnoreCase);
+        }
+
+        if (dict.TryGetValue("CreditAmount", out var ca) && decimal.TryParse(ca, out var vCa))
+        {
+            CreditAmount = vCa;
+        }
+
+        if (dict.TryGetValue("CreditInterestRate", out var ci) && decimal.TryParse(ci, out var vCi))
+        {
+            CreditInterestRate = vCi;
         }
     }
 

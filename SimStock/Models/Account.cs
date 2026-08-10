@@ -14,6 +14,10 @@ public class Account
 
     public decimal TotalAsset { get; set; }
 
+    public decimal CreditLimit { get; set; } = 0m;
+    public decimal DebtBalance { get; set; } = 0m;
+    public DateTime LastInterestCalculated { get; set; } = DateTime.Now;
+
     public DateTime CreatedAt { get; set; }
 
     public DateTime UpdatedAt { get; set; }

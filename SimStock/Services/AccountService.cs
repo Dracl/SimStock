@@ -180,6 +180,8 @@ public static class AccountService
         }
 
         account.TotalAsset = account.Balance + marketValue;
+        // 同步更新授信额度（固定额度，不随总资产变动）
+        account.CreditLimit = Entry.Config.CreditAmount;
         account.UpdatedAt = DateTime.Now;
         await Db.Updateable(account).ExecuteCommandAsync();
     }
@@ -227,6 +229,8 @@ public static class AccountService
             if (account.TotalAsset != newTotal)
             {
                 account.TotalAsset = newTotal;
+                // 同步更新授信额度（固定额度，不随总资产变动）
+                account.CreditLimit = Entry.Config.CreditAmount;
                 account.UpdatedAt = DateTime.Now;
                 await Db.Updateable(account).ExecuteCommandAsync();
             }

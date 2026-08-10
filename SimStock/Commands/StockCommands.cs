@@ -41,6 +41,12 @@ public class StockCommands : CommandHandlerBase
 
     public string ClearOneCmd => Entry.Config.GetCommandTemplate("ClearOne");
 
+    public string CreditCmd => Entry.Config.GetCommandTemplate("Credit");
+
+    public string CreditUseCmd => Entry.Config.GetCommandTemplate("CreditUse");
+
+    public string CreditRepayCmd => Entry.Config.GetCommandTemplate("CreditRepay");
+
     public string DepositCmd => Entry.Config.GetCommandTemplate("Deposit");
 
     public string GlobalRankCmd => Entry.Config.GetCommandTemplate("GlobalRank");
@@ -858,6 +864,151 @@ public class StockCommands : CommandHandlerBase
         return EventHandleResult.Block;
     }
 
+    // ==================== 授信额度 ====================
+    [DynamicCommand(nameof(CreditCmd), MatchMode.FullMatch)]
+    public async Task<EventHandleResult> CmdCredit(GroupMessageContext? g, PrivateMessageContext? p)
+    {
+        var qq = GetQQ(g, p);
+        var (groupId, sourceGroupId, _) = ResolveCtx(g, p);
+        if (!await CheckAccess(g, p, qq))
+        {
+            return EventHandleResult.Block;
+        }
+
+        var (account, err) = await SafetyChecker.RequireAccountAsync(Entry.Db!, qq);
+        if (account == null) { await SendAsync(g, p, err!); return EventHandleResult.Block; }
+
+        // 计算待还利息
+        var interest = SafetyChecker.CalculateInterest(account, Entry.Config);
+
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("💰 授信额度");
+        sb.AppendLine();
+        sb.AppendLine($"💵 可用余额: {account.Balance:N2} 元");
+        sb.AppendLine($"🏦 授信额度: {account.CreditLimit:N2} 元");
+        sb.AppendLine($"📉 当前费率: {Entry.Config.CreditInterestRate:P4}");
+        sb.AppendLine($"📊 待还额度: {account.DebtBalance:N2} 元");
+        sb.AppendLine($"💸 待还利息: {interest:N2} 元");
+
+        await SendAsync(g, p, sb.ToString());
+        return EventHandleResult.Block;
+    }
+
+    [DynamicCommand(nameof(CreditUseCmd), MatchMode.Regex)]
+    public async Task<EventHandleResult> CmdCreditUse(GroupMessageContext? g, PrivateMessageContext? p, string amount)
+    {
+        var qq = GetQQ(g, p);
+        var (groupId, sourceGroupId, _) = ResolveCtx(g, p);
+        if (!await CheckAccess(g, p, qq))
+        {
+            return EventHandleResult.Block;
+        }
+
+        var (account, err) = await SafetyChecker.RequireAccountAsync(Entry.Db!, qq);
+        if (account == null) { await SendAsync(g, p, err!); return EventHandleResult.Block; }
+
+        // 解析金额（支持 'm' 后缀表示使用剩余额度）
+        bool isMax = amount.EndsWith("m");
+        amount = amount.TrimEnd('m');
+        if (!decimal.TryParse(amount, out var requestedAmount) || requestedAmount <= 0)
+        {
+            await SendAsync(g, p, "⚠️ 借款金额格式错误，请输入数字（如 10000 或 10000m）");
+            return EventHandleResult.Block;
+        }
+
+        decimal usableLimit = account.CreditLimit - account.DebtBalance;
+        if (isMax)
+        {
+            if (usableLimit <= 0)
+            {
+                await SendAsync(g, p, "⚠️ 当前无剩余额度可用，请先偿还部分授信");
+                return EventHandleResult.Block;
+            }
+            requestedAmount = usableLimit;
+        }
+
+        if (requestedAmount > usableLimit)
+        {
+            await SendAsync(g, p, $"⚠️ 借款金额超过剩余额度，剩余额度为 {usableLimit:N2} 元");
+            return EventHandleResult.Block;
+        }
+
+        // 执行借入
+        await Entry.Db!.UseTranAsync(async () =>
+        {
+            account.Balance += requestedAmount;
+            account.DebtBalance += requestedAmount;
+            account.UpdatedAt = DateTime.Now;
+            await Entry.Db.Updateable(account).ExecuteCommandAsync();
+
+            await Entry.Db.Insertable(new CreditRecord
+            {
+                AccountId = account.Id,
+                Type = 1,
+                Amount = requestedAmount,
+                Interest = 0,
+                CreatedAt = DateTime.Now,
+                SourceMessageId = sourceGroupId // 简化处理，实际应传消息ID
+            }).ExecuteCommandAsync();
+        });
+
+        await SendAsync(g, p, $"✅ 借款成功！借款金额: {requestedAmount:N2} 元\n当前授信额度: {account.CreditLimit:N2} 元\n当前待还本金: {account.DebtBalance:N2} 元");
+        return EventHandleResult.Block;
+    }
+
+    [DynamicCommand(nameof(CreditRepayCmd), MatchMode.Regex)]
+    public async Task<EventHandleResult> CmdCreditRepay(GroupMessageContext? g, PrivateMessageContext? p, string amount)
+    {
+        var qq = GetQQ(g, p);
+        var (groupId, sourceGroupId, _) = ResolveCtx(g, p);
+        if (!await CheckAccess(g, p, qq))
+        {
+            return EventHandleResult.Block;
+        }
+
+        var (account, err) = await SafetyChecker.RequireAccountAsync(Entry.Db!, qq);
+        if (account == null) { await SendAsync(g, p, err!); return EventHandleResult.Block; }
+
+        if (!decimal.TryParse(amount, out var requestedAmount) || requestedAmount <= 0)
+        {
+            await SendAsync(g, p, "⚠️ 还款金额格式错误");
+            return EventHandleResult.Block;
+        }
+
+        // 计算当前待还利息
+        var interest = SafetyChecker.CalculateInterest(account, Entry.Config);
+        var totalRepay = requestedAmount + interest;
+
+        if (account.Balance < totalRepay)
+        {
+            await SendAsync(g, p, $"⚠️ 余额不足，需要 {totalRepay:N2} 元（含利息 {interest:N2} 元）");
+            return EventHandleResult.Block;
+        }
+
+        // 执行偿还
+        await Entry.Db!.UseTranAsync(async () =>
+        {
+            account.Balance -= totalRepay;
+            account.DebtBalance -= requestedAmount;
+            account.LastInterestCalculated = DateTime.Now;
+            account.UpdatedAt = DateTime.Now;
+            await Entry.Db.Updateable(account).ExecuteCommandAsync();
+
+            await Entry.Db.Insertable(new CreditRecord
+            {
+                AccountId = account.Id,
+                Type = 2,
+                Amount = requestedAmount,
+                Interest = interest,
+                CreatedAt = DateTime.Now,
+                SourceMessageId = sourceGroupId
+            }).ExecuteCommandAsync();
+        });
+
+        await SendAsync(g, p, $"✅ 还款成功！偿还本金: {requestedAmount:N2} 元\n支付利息: {interest:N2} 元\n当前待还本金: {account.DebtBalance:N2} 元");
+        return EventHandleResult.Block;
+    }
+
     // ==================== 账户管理 ====================
     [DynamicCommand(nameof(WithdrawCmd), MatchMode.Regex)]
     public async Task<EventHandleResult> CmdWithdraw(GroupMessageContext? g, PrivateMessageContext? p, decimal amount)
@@ -929,6 +1080,9 @@ public class StockCommands : CommandHandlerBase
             {t("Cancel")} 订单号   撤销挂单
             {t("ClearOne")} 代码     清仓指定股票（全仓卖出）
             {t("ClearAll")}          清仓全部持仓
+            {t("Credit")}            查询授信额度与欠款
+            {t("CreditUse")} 金额   使用授信借款（加m表示用满剩余额度）
+            {t("CreditRepay")} 金额 偿还授信本金
 
             🔍 【信息查询】
             {t("Rank")}          本群交易排行榜

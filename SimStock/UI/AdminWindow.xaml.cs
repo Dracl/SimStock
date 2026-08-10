@@ -219,6 +219,39 @@ public partial class AdminWindow : Window
         CustomHelpTextInput.Text = Entry.Config.CustomHelpText;
         HelpForwardSend.IsChecked = Entry.Config.HelpForwardSend;
         LoadCommandTemplates();
+        LoadCreditSettings();
+    }
+
+    private void LoadCreditSettings()
+    {
+        CreditAmountInput.Text = Entry.Config.CreditAmount.ToString("F0");
+        CreditRateInput.Text = (Entry.Config.CreditInterestRate * 10000).ToString("F0"); // 万分之几
+    }
+
+    private async void SaveCreditSettings_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var db = Entry.Db!;
+
+            if (decimal.TryParse(CreditAmountInput.Text.Trim(), out var creditAmount) && creditAmount >= 0)
+            {
+                await Entry.Config.SetAsync(db, "CreditAmount", creditAmount.ToString("F0"));
+            }
+
+            if (decimal.TryParse(CreditRateInput.Text.Trim(), out var ratePerWan) && ratePerWan >= 0)
+            {
+                await Entry.Config.SetAsync(db, "CreditInterestRate", (ratePerWan / 10000m).ToString("F6"));
+            }
+
+            MessageBox.Show("授信设置已保存", "提示", MessageBoxButton.OK, MessageBoxImage.Information);
+            LoadCreditSettings();
+        }
+        catch (Exception ex)
+        {
+            Entry.Api.Logger.Warn("管理界面", $"保存授信设置失败: {ex.Message}");
+            MessageBox.Show($"保存失败: {ex.Message}", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
     }
 
     private async void RefreshUsers_Click(object sender, RoutedEventArgs e) => await LoadUsers();

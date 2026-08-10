@@ -8,7 +8,7 @@ namespace SimStock;
 [PluginInfo(
     appId: "me.cqp.luohuaming.SimStock",
     name: "水银韭菜机",
-    version: "1.16.0",
+    version: "1.18.0",
     description: "群聊模拟炒股插件",
     author: "落花茗"
 )]
@@ -55,7 +55,8 @@ public class Entry : PluginBase
             typeof(Models.TradeRecord),
             typeof(Models.Setting),
             typeof(Models.GroupAdmin),
-            typeof(Models.UserGroup));
+            typeof(Models.UserGroup),
+            typeof(Models.CreditRecord));
 
         // 加载配置
         Config = new ConfigService();
