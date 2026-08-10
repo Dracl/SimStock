@@ -59,6 +59,8 @@ public class ConfigService
         ["Credit"] = "/授信额度",
         ["CreditUse"] = "/使用授信",
         ["CreditRepay"] = "/偿还授信",
+        ["TomorrowClear"] = "/开盘清仓",
+        ["TomorrowClearCancel"] = "/取消开盘清仓",
     };
 
     /// <summary>Regex 型命令的固定参数后缀（不可修改，防止破坏命名组）</summary>
@@ -78,8 +80,10 @@ public class ConfigService
         ["LimitAllIn"] = @"\s+(?<code>\w{2,8})\s+(?<price>\d+(\.\d+)?)",
         ["Cancel"] = @"\s+(?<orderId>\d+)",
         ["ClearOne"] = @"\s+(?<code>\w{2,8})",
-        ["CreditUse"] = @"\s+(?<amount>\d+(\.\d+)?m?)",
+        ["CreditUse"] = @"\s+(?<amount>\d+(\.\d+)?|梭哈)",
         ["CreditRepay"] = @"\s+(?<amount>\d+(\.\d+)?)",
+        ["TomorrowClear"] = @"\s+(?<code>\w{2,8}|全仓)",
+        ["TomorrowClearCancel"] = @"\s+(?<code>\w{2,8}|全仓)",
     };
 
     /// <summary>获取当前触发词</summary>
