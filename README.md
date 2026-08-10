@@ -2,7 +2,7 @@
 
 QQ群聊的模拟炒股插件。
 [AMN2](https://github.com/Hellobaka/Another-Mirai-Native2) 插件，要求 AMN2 版本 2.13.1 以上。
-Full Developed by Deepseek V4 pro.
+Fully Developed by DeepSeek V4 Pro & Qwen 3.6 35B.
 
 ## v1.18.0 更新
 - 新增「开盘清仓」功能：非交易时段可提前设置下一个交易日开盘自动清仓
@@ -83,6 +83,10 @@ Full Developed by Deepseek V4 pro.
 0.00 元
 💸 待还利息: 
 0.00 元
+
+
+💰 账户信息
+💵 可用余额: 193.29 元
 📦 持仓市值: 985,113.00 元
 📊 总资产: 985,306.29 元
 
