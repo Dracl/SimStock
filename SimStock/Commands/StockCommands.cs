@@ -41,6 +41,14 @@ public class StockCommands : CommandHandlerBase
 
     public string ClearOneCmd => Entry.Config.GetCommandTemplate("ClearOne");
 
+    public string TomorrowClearCmd => Entry.Config.GetCommandTemplate("TomorrowClear");
+
+    public string TomorrowClearCancelCmd => Entry.Config.GetCommandTemplate("TomorrowClearCancel");
+
+    public string TomorrowAllInCmd => Entry.Config.GetCommandTemplate("TomorrowAllIn");
+
+    public string TomorrowAllInCancelCmd => Entry.Config.GetCommandTemplate("TomorrowAllInCancel");
+
     public string CreditCmd => Entry.Config.GetCommandTemplate("Credit");
 
     public string CreditUseCmd => Entry.Config.GetCommandTemplate("CreditUse");
@@ -864,6 +872,251 @@ public class StockCommands : CommandHandlerBase
         return EventHandleResult.Block;
     }
 
+    // ==================== 开盘清仓 ====================
+    [DynamicCommand(nameof(TomorrowClearCmd), MatchMode.Regex)]
+    public async Task<EventHandleResult> CmdTomorrowClear(GroupMessageContext? g, PrivateMessageContext? p, string code)
+    {
+        if (string.IsNullOrWhiteSpace(code))
+        {
+            await SendAsync(g, p, "⚠️ 请指定股票代码或全仓，如 #开盘清仓 000001 或 #开盘清仓 全仓");
+            return EventHandleResult.Block;
+        }
+
+        var qq = GetQQ(g, p);
+        var (groupId, sourceGroupId, _) = ResolveCtx(g, p);
+        if (!await CheckAccess(g, p, qq))
+        {
+            return EventHandleResult.Block;
+        }
+
+        // 检查是否在交易时段——在交易时段应该直接清仓，不要预约
+        var (th, err) = SafetyChecker.CheckTradingHours();
+        if (th)
+        {
+            await SendAsync(g, p, "⚠️ 当前为交易时段，请直接使用 /全部清仓 或 /清仓 代码");
+            return EventHandleResult.Block;
+        }
+
+        var (account, err2) = await SafetyChecker.RequireAccountAsync(Entry.Db!, qq);
+        if (account == null) { await SendAsync(g, p, err2!); return EventHandleResult.Block; }
+
+        string normalizedCode;
+        string displayCode;
+
+        if (code == "全仓")
+        {
+            normalizedCode = "ALL";
+            displayCode = "全仓";
+        }
+        else
+        {
+            if (Entry.Quotes == null) { await SendAsync(g, p, "⚠️ 行情服务未就绪，请稍后重试"); return EventHandleResult.Block; }
+            var (market, resolvedCode, normalized, resolveErr) = await Entry.Quotes.ResolveCodeAsync(code);
+            if (resolveErr != null && market == 0) { await SendAsync(g, p, resolveErr); return EventHandleResult.Block; }
+            normalizedCode = normalized;
+            displayCode = StockCodeParser.ToDisplayCode(normalized);
+        }
+
+        // 检查是否有持仓
+        var positions = await AccountService.GetPositionsAsync(account.Id);
+        if (normalizedCode == "ALL")
+        {
+            if (positions.Count == 0)
+            {
+                await SendAsync(g, p, "⚠️ 您当前无持仓，无需清仓");
+                return EventHandleResult.Block;
+            }
+        }
+        else
+        {
+            var pos = positions.FirstOrDefault(x => x.StockCode == normalizedCode);
+            if (pos == null || pos.Quantity <= 0)
+            {
+                await SendAsync(g, p, $"⚠️ 您未持有 {displayCode}，无需清仓");
+                return EventHandleResult.Block;
+            }
+        }
+
+        // 检查是否已有待执行的同股票代码订单
+        var existing = await Entry.Db!.Queryable<TomorrowOrder>()
+            .AnyAsync(o => o.QQ == qq && o.StockCode == normalizedCode && o.Status == 0);
+        if (existing)
+        {
+            await SendAsync(g, p, $"⚠️ 已存在 {displayCode} 的待执行清仓订单");
+            return EventHandleResult.Block;
+        }
+
+        // 创建订单
+        var order = new TomorrowOrder
+        {
+            QQ = qq,
+            GroupId = sourceGroupId ?? 0,
+            StockCode = normalizedCode,
+            Status = 0,
+            CreatedAt = DateTime.Now,
+            UpdatedAt = DateTime.Now
+        };
+        await Entry.Db.Insertable(order).ExecuteCommandAsync();
+
+        await SendAsync(g, p, $"✅ 已预约开盘清仓：{displayCode}，将在下一个交易日开盘后执行");
+        return EventHandleResult.Block;
+    }
+
+    [DynamicCommand(nameof(TomorrowClearCancelCmd), MatchMode.Regex)]
+    public async Task<EventHandleResult> CmdTomorrowClearCancel(GroupMessageContext? g, PrivateMessageContext? p, string code)
+    {
+        if (string.IsNullOrWhiteSpace(code))
+        {
+            await SendAsync(g, p, "⚠️ 请指定股票代码或全仓，如 #取消开盘清仓 000001 或 #取消开盘清仓 全仓");
+            return EventHandleResult.Block;
+        }
+
+        var qq = GetQQ(g, p);
+        var (groupId, _, _) = ResolveCtx(g, p);
+        if (!await CheckAccess(g, p, qq))
+        {
+            return EventHandleResult.Block;
+        }
+
+        string normalizedCode;
+        string displayCode;
+
+        if (code == "全仓")
+        {
+            normalizedCode = "ALL";
+            displayCode = "全仓";
+        }
+        else
+        {
+            if (Entry.Quotes == null) { await SendAsync(g, p, "⚠️ 行情服务未就绪，请稍后重试"); return EventHandleResult.Block; }
+            var (market, resolvedCode, normalized, resolveErr) = await Entry.Quotes.ResolveCodeAsync(code);
+            if (resolveErr != null && market == 0) { await SendAsync(g, p, resolveErr); return EventHandleResult.Block; }
+            normalizedCode = normalized;
+            displayCode = StockCodeParser.ToDisplayCode(normalized);
+        }
+
+        var pendingOrders = await Entry.Db!.Queryable<TomorrowOrder>()
+            .Where(o => o.QQ == qq && o.StockCode == normalizedCode && o.Status == 0)
+            .ToListAsync();
+
+        if (pendingOrders.Count == 0)
+        {
+            await SendAsync(g, p, $"⚠️ 未找到 {displayCode} 的待执行清仓订单");
+            return EventHandleResult.Block;
+        }
+
+        foreach (var order in pendingOrders)
+        {
+            order.Status = 2;
+            order.UpdatedAt = DateTime.Now;
+            await Entry.Db.Updateable(order).ExecuteCommandAsync();
+        }
+
+        await SendAsync(g, p, $"✅ 已取消 {displayCode} 的开盘清仓预约（{pendingOrders.Count} 单）");
+        return EventHandleResult.Block;
+    }
+
+    // ==================== 开盘梭哈 ====================
+    [DynamicCommand(nameof(TomorrowAllInCmd), MatchMode.Regex)]
+    public async Task<EventHandleResult> CmdTomorrowAllIn(GroupMessageContext? g, PrivateMessageContext? p, string code)
+    {
+        if (string.IsNullOrWhiteSpace(code))
+        {
+            await SendAsync(g, p, "⚠️ 请指定股票代码，如 #开盘梭哈 000001");
+            return EventHandleResult.Block;
+        }
+
+        var qq = GetQQ(g, p);
+        var (groupId, sourceGroupId, _) = ResolveCtx(g, p);
+        if (!await CheckAccess(g, p, qq))
+        {
+            return EventHandleResult.Block;
+        }
+
+        // 检查是否在交易时段——在交易时段应该直接梭哈，不要预约
+        var (th, err) = SafetyChecker.CheckTradingHours();
+        if (th)
+        {
+            await SendAsync(g, p, $"⚠️ 当前为交易时段，请直接使用 {Entry.Config.GetTrigger("AllIn")} 代码");
+            return EventHandleResult.Block;
+        }
+
+        var (account, err2) = await SafetyChecker.RequireAccountAsync(Entry.Db!, qq);
+        if (account == null) { await SendAsync(g, p, err2!); return EventHandleResult.Block; }
+
+        if (Entry.Quotes == null) { await SendAsync(g, p, "⚠️ 行情服务未就绪，请稍后重试"); return EventHandleResult.Block; }
+        var (market, resolvedCode, normalized, resolveErr) = await Entry.Quotes.ResolveCodeAsync(code);
+        if (resolveErr != null && market == 0) { await SendAsync(g, p, resolveErr); return EventHandleResult.Block; }
+        var displayCode = StockCodeParser.ToDisplayCode(normalized);
+
+        // 检查是否已有待执行的同代码开盘订单（清仓或梭哈都不能重复预约，避免开盘先卖后买自相矛盾）
+        var existing = await Entry.Db!.Queryable<TomorrowOrder>()
+            .AnyAsync(o => o.QQ == qq && o.StockCode == normalized && o.Status == 0);
+        if (existing)
+        {
+            await SendAsync(g, p, $"⚠️ 已存在 {displayCode} 的待执行开盘订单，请先取消后再预约");
+            return EventHandleResult.Block;
+        }
+
+        // 创建订单
+        var order = new TomorrowOrder
+        {
+            QQ = qq,
+            GroupId = sourceGroupId ?? 0,
+            StockCode = normalized,
+            OrderType = 1,
+            Status = 0,
+            CreatedAt = DateTime.Now,
+            UpdatedAt = DateTime.Now
+        };
+        await Entry.Db.Insertable(order).ExecuteCommandAsync();
+
+        await SendAsync(g, p, $"✅ 已预约开盘梭哈：{displayCode}，将在下一个交易日开盘后用全部可用资金买入");
+        return EventHandleResult.Block;
+    }
+
+    [DynamicCommand(nameof(TomorrowAllInCancelCmd), MatchMode.Regex)]
+    public async Task<EventHandleResult> CmdTomorrowAllInCancel(GroupMessageContext? g, PrivateMessageContext? p, string code)
+    {
+        if (string.IsNullOrWhiteSpace(code))
+        {
+            await SendAsync(g, p, "⚠️ 请指定股票代码，如 #取消开盘梭哈 000001");
+            return EventHandleResult.Block;
+        }
+
+        var qq = GetQQ(g, p);
+        var (groupId, _, _) = ResolveCtx(g, p);
+        if (!await CheckAccess(g, p, qq))
+        {
+            return EventHandleResult.Block;
+        }
+
+        if (Entry.Quotes == null) { await SendAsync(g, p, "⚠️ 行情服务未就绪，请稍后重试"); return EventHandleResult.Block; }
+        var (market, resolvedCode, normalized, resolveErr) = await Entry.Quotes.ResolveCodeAsync(code);
+        if (resolveErr != null && market == 0) { await SendAsync(g, p, resolveErr); return EventHandleResult.Block; }
+        var displayCode = StockCodeParser.ToDisplayCode(normalized);
+
+        var pendingOrders = await Entry.Db!.Queryable<TomorrowOrder>()
+            .Where(o => o.QQ == qq && o.StockCode == normalized && o.OrderType == 1 && o.Status == 0)
+            .ToListAsync();
+
+        if (pendingOrders.Count == 0)
+        {
+            await SendAsync(g, p, $"⚠️ 未找到 {displayCode} 的待执行开盘梭哈订单");
+            return EventHandleResult.Block;
+        }
+
+        foreach (var order in pendingOrders)
+        {
+            order.Status = 2;
+            order.UpdatedAt = DateTime.Now;
+            await Entry.Db.Updateable(order).ExecuteCommandAsync();
+        }
+
+        await SendAsync(g, p, $"✅ 已取消 {displayCode} 的开盘梭哈预约（{pendingOrders.Count} 单）");
+        return EventHandleResult.Block;
+    }
+
     // ==================== 授信额度 ====================
     [DynamicCommand(nameof(CreditCmd), MatchMode.FullMatch)]
     public async Task<EventHandleResult> CmdCredit(GroupMessageContext? g, PrivateMessageContext? p)
@@ -878,6 +1131,14 @@ public class StockCommands : CommandHandlerBase
         var (account, err) = await SafetyChecker.RequireAccountAsync(Entry.Db!, qq);
         if (account == null) { await SendAsync(g, p, err!); return EventHandleResult.Block; }
 
+        // 存量账号兼容：建号早于授信功能、CreditLimit 未初始化的账号，查询时兜底同步为配置额度
+        if (account.CreditLimit <= 0)
+        {
+            account.CreditLimit = Entry.Config.CreditAmount;
+            account.UpdatedAt = DateTime.Now;
+            await Entry.Db!.Updateable(account).ExecuteCommandAsync();
+        }
+
         // 计算待还利息
         var interest = SafetyChecker.CalculateInterest(account, Entry.Config);
 
@@ -886,7 +1147,7 @@ public class StockCommands : CommandHandlerBase
         sb.AppendLine();
         sb.AppendLine($"💵 可用余额: {account.Balance:N2} 元");
         sb.AppendLine($"🏦 授信额度: {account.CreditLimit:N2} 元");
-        sb.AppendLine($"📉 当前费率: {Entry.Config.CreditInterestRate:P4}");
+        sb.AppendLine($"📉 当前费率: {Entry.Config.CreditInterestRate * 100m:0.#####}%");
         sb.AppendLine($"📊 待还额度: {account.DebtBalance:N2} 元");
         sb.AppendLine($"💸 待还利息: {interest:N2} 元");
 
@@ -907,37 +1168,69 @@ public class StockCommands : CommandHandlerBase
         var (account, err) = await SafetyChecker.RequireAccountAsync(Entry.Db!, qq);
         if (account == null) { await SendAsync(g, p, err!); return EventHandleResult.Block; }
 
-        // 解析金额（支持 'm' 后缀表示使用剩余额度）
-        bool isMax = amount.EndsWith("m");
-        amount = amount.TrimEnd('m');
-        if (!decimal.TryParse(amount, out var requestedAmount) || requestedAmount <= 0)
+        // 存量账号兼容：CreditLimit 未初始化的账号，借款前兑底同步为配置额度
+        if (account.CreditLimit <= 0)
         {
-            await SendAsync(g, p, "⚠️ 借款金额格式错误，请输入数字（如 10000 或 10000m）");
+            account.CreditLimit = Entry.Config.CreditAmount;
+            account.UpdatedAt = DateTime.Now;
+            await Entry.Db!.Updateable(account).ExecuteCommandAsync();
+        }
+
+        // 解析金额（支持 '梭哈' 表示用满剩余额度）
+        bool isMax = amount == "梭哈";
+        if (!isMax)
+        {
+            if (!decimal.TryParse(amount, out var requestedAmount) || requestedAmount <= 0)
+            {
+                await SendAsync(g, p, "⚠️ 借款金额格式错误，请输入数字或 梭哈");
+                return EventHandleResult.Block;
+            }
+
+            decimal usableLimit = account.CreditLimit - account.DebtBalance;
+            if (requestedAmount > usableLimit)
+            {
+                await SendAsync(g, p, $"⚠️ 借款金额超过剩余额度，剩余额度为 {usableLimit:N2} 元");
+                return EventHandleResult.Block;
+            }
+
+            // 执行借入
+            await Entry.Db!.UseTranAsync(async () =>
+            {
+                account.Balance += requestedAmount;
+                account.DebtBalance += requestedAmount;
+                account.LastInterestCalculated = DateTime.Now;
+                account.UpdatedAt = DateTime.Now;
+                await Entry.Db.Updateable(account).ExecuteCommandAsync();
+
+                await Entry.Db.Insertable(new CreditRecord
+                {
+                    AccountId = account.Id,
+                    Type = 1,
+                    Amount = requestedAmount,
+                    Interest = 0,
+                    CreatedAt = DateTime.Now,
+                    SourceMessageId = sourceGroupId
+                }).ExecuteCommandAsync();
+            });
+
+            await SendAsync(g, p, $"✅ 借款成功！借款金额: {requestedAmount:N2} 元\n当前授信额度: {account.CreditLimit:N2} 元\n当前待还本金: {account.DebtBalance:N2} 元");
             return EventHandleResult.Block;
         }
 
-        decimal usableLimit = account.CreditLimit - account.DebtBalance;
-        if (isMax)
+        // 梭哈：用满剩余额度
+        var remainingLimit = account.CreditLimit - account.DebtBalance;
+        if (remainingLimit <= 0)
         {
-            if (usableLimit <= 0)
-            {
-                await SendAsync(g, p, "⚠️ 当前无剩余额度可用，请先偿还部分授信");
-                return EventHandleResult.Block;
-            }
-            requestedAmount = usableLimit;
-        }
-
-        if (requestedAmount > usableLimit)
-        {
-            await SendAsync(g, p, $"⚠️ 借款金额超过剩余额度，剩余额度为 {usableLimit:N2} 元");
+            await SendAsync(g, p, "⚠️ 当前无剩余额度可用，请先偿还部分授信");
             return EventHandleResult.Block;
         }
 
         // 执行借入
         await Entry.Db!.UseTranAsync(async () =>
         {
-            account.Balance += requestedAmount;
-            account.DebtBalance += requestedAmount;
+            account.Balance += remainingLimit;
+            account.DebtBalance += remainingLimit;
+            account.LastInterestCalculated = DateTime.Now;
             account.UpdatedAt = DateTime.Now;
             await Entry.Db.Updateable(account).ExecuteCommandAsync();
 
@@ -945,14 +1238,14 @@ public class StockCommands : CommandHandlerBase
             {
                 AccountId = account.Id,
                 Type = 1,
-                Amount = requestedAmount,
+                Amount = remainingLimit,
                 Interest = 0,
                 CreatedAt = DateTime.Now,
-                SourceMessageId = sourceGroupId // 简化处理，实际应传消息ID
+                SourceMessageId = sourceGroupId
             }).ExecuteCommandAsync();
         });
 
-        await SendAsync(g, p, $"✅ 借款成功！借款金额: {requestedAmount:N2} 元\n当前授信额度: {account.CreditLimit:N2} 元\n当前待还本金: {account.DebtBalance:N2} 元");
+        await SendAsync(g, p, $"✅ 借款成功！借款金额: {remainingLimit:N2} 元\n当前授信额度: {account.CreditLimit:N2} 元\n当前待还本金: {account.DebtBalance:N2} 元");
         return EventHandleResult.Block;
     }
 
@@ -972,6 +1265,13 @@ public class StockCommands : CommandHandlerBase
         if (!decimal.TryParse(amount, out var requestedAmount) || requestedAmount <= 0)
         {
             await SendAsync(g, p, "⚠️ 还款金额格式错误");
+            return EventHandleResult.Block;
+        }
+
+        // 拒绝超额还款
+        if (requestedAmount > account.DebtBalance)
+        {
+            await SendAsync(g, p, $"⚠️ 还款金额超过待还本金，当前待还 {account.DebtBalance:N2} 元");
             return EventHandleResult.Block;
         }
 
@@ -1080,8 +1380,12 @@ public class StockCommands : CommandHandlerBase
             {t("Cancel")} 订单号   撤销挂单
             {t("ClearOne")} 代码     清仓指定股票（全仓卖出）
             {t("ClearAll")}          清仓全部持仓
+            {t("TomorrowClear")} 代码/全仓  预约开盘清仓（非交易时段使用）
+            {t("TomorrowClearCancel")} 代码/全仓  取消预约开盘清仓
+            {t("TomorrowAllIn")} 代码   预约开盘梭哈（非交易时段使用）
+            {t("TomorrowAllInCancel")} 代码  取消预约开盘梭哈
             {t("Credit")}            查询授信额度与欠款
-            {t("CreditUse")} 金额   使用授信借款（加m表示用满剩余额度）
+            {t("CreditUse")} 金额   使用授信借款（梭哈表示用满剩余额度）
             {t("CreditRepay")} 金额 偿还授信本金
 
             🔍 【信息查询】
@@ -1305,7 +1609,7 @@ public class StockCommands : CommandHandlerBase
     /// <summary>
     /// 计算梭哈最大可买数量：余额 ÷ (单价 × 1.0003) 向下取整到 100 的倍数，预留手续费
     /// </summary>
-    private static int CalcAllInQty(decimal balance, decimal price)
+    internal static int CalcAllInQty(decimal balance, decimal price)
     {
         if (price <= 0 || balance <= 0) return 0;
 

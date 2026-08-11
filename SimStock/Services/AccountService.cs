@@ -30,6 +30,7 @@ public static class AccountService
             QQ = qq,
             Balance = Entry.Config.InitialCapital,
             TotalAsset = Entry.Config.InitialCapital,
+            CreditLimit = Entry.Config.CreditAmount,
             CreatedAt = DateTime.Now,
             UpdatedAt = DateTime.Now
         };
@@ -158,6 +159,7 @@ public static class AccountService
         if (positions.Count == 0)
         {
             account.TotalAsset = account.Balance;
+            account.CreditLimit = Entry.Config.CreditAmount;
             account.UpdatedAt = DateTime.Now;
             await Db.Updateable(account).ExecuteCommandAsync();
             return;
@@ -196,7 +198,17 @@ public static class AccountService
             .Where(p => accountIds.Contains(p.AccountId) && p.Quantity > 0)
             .ToListAsync();
 
-        if (allPositions.Count == 0) return;
+        if (allPositions.Count == 0)
+        {
+            // 无持仓时也同步授信额度
+            foreach (var account in accounts)
+            {
+                account.CreditLimit = Entry.Config.CreditAmount;
+                account.UpdatedAt = DateTime.Now;
+                await Db.Updateable(account).ExecuteCommandAsync();
+            }
+            return;
+        }
 
         var uniqueStocks = allPositions
             .Select(p => StockCodeParser.ParseNormalized(p.StockCode))

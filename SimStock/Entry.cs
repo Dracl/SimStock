@@ -1,4 +1,4 @@
-using Another_Mirai_Native.Abstractions;
+﻿using Another_Mirai_Native.Abstractions;
 using Another_Mirai_Native.Abstractions.Attributes;
 using Another_Mirai_Native.Abstractions.Services;
 using SqlSugar;
@@ -168,19 +168,19 @@ public class Entry : PluginBase
                 return;
             }
 
-            Api.Logger.Info("水银韭菜机", $"开盘清仓：发现 {pendingOrders.Count} 个待执行订单，开始执行");
+            Api.Logger.Info("水银韭菜机", $"开盘订单：发现 {pendingOrders.Count} 个待执行订单，开始执行");
 
             var client = await ConnMgr!.EnsureConnectedAsync();
             if (client == null)
             {
-                Api.Logger.Warn("水银韭菜机", "开盘清仓：无法连接行情源，跳过本次执行");
+                Api.Logger.Warn("水银韭菜机", "开盘订单：无法连接行情源，跳过本次执行");
                 return;
             }
 
             // 检查当前是否在交易时段（9:30 之后）
             if (!TradingHoursChecker.IsInTradingSession())
             {
-                Api.Logger.Info("水银韭菜机", "开盘清仓：当前非交易时段，跳过执行");
+                Api.Logger.Info("水银韭菜机", "开盘订单：当前非交易时段，跳过执行");
                 return;
             }
 
@@ -200,55 +200,113 @@ public class Entry : PluginBase
                         continue;
                     }
 
-                    // 检查持仓
+                    // 开盘梭哈买入：独立分支处理，不影响现有清仓路径
+                    if (order.OrderType == 1)
+                    {
+                        if (!await ExecuteTomorrowAllInAsync(order, account))
+                        {
+                            failedCount++;
+                        }
+                        continue;
+                    }
+
                     var positions = await AccountService.GetPositionsAsync(account.Id);
-                    var pos = positions.FirstOrDefault(x => x.StockCode == order.StockCode);
-                    if (pos == null || pos.Quantity <= 0)
-                    {
-                        await MarkOrderFailedAsync(order, "持仓不足");
-                        failedCount++;
-                        continue;
-                    }
 
-                    // 获取行情
-                    var parsed = StockCodeParser.ParseNormalized(order.StockCode);
-                    if (!parsed.HasValue)
+                    // 处理全仓清仓 (StockCode = "ALL")
+                    if (order.StockCode == "ALL")
                     {
-                        await MarkOrderFailedAsync(order, "股票代码格式错误");
-                        failedCount++;
-                        continue;
-                    }
+                        if (positions.Count == 0)
+                        {
+                            await MarkOrderFailedAsync(order, "无持仓");
+                            failedCount++;
+                            continue;
+                        }
 
-                    var (market, code) = parsed.Value;
-                    var quote = await Quotes!.GetQuoteAsync(market, code);
-                    if (quote == null || quote.Bid1 <= 0)
-                    {
-                        await MarkOrderFailedAsync(order, "行情获取失败或无买盘");
-                        failedCount++;
-                        continue;
-                    }
+                        var successCount = 0;
+                        var skipCount = 0;
+                        foreach (var pos in positions)
+                        {
+                            var parsed = StockCodeParser.ParseNormalized(pos.StockCode);
+                            if (!parsed.HasValue)
+                            {
+                                skipCount++;
+                                continue;
+                            }
 
-                    // 执行卖出
-                    var (sellOrder, sellErr, fee) = await TradingService.MarketSellAsync(
-                        order.QQ, order.StockCode, pos.Quantity, order.GroupId);
+                            var (market, code) = parsed.Value;
+                            var quote = await Quotes!.GetQuoteAsync(market, code);
+                            if (quote == null || quote.Bid1 <= 0)
+                            {
+                                skipCount++;
+                                continue;
+                            }
 
-                    if (sellErr != null)
-                    {
-                        await MarkOrderFailedAsync(order, sellErr);
-                        failedCount++;
-                    }
-                    else
-                    {
-                        // 执行成功：更新订单状态
+                            var (sellOrder, sellErr, fee) = await TradingService.MarketSellAsync(
+                                order.QQ, pos.StockCode, pos.Quantity, order.GroupId);
+
+                            if (sellErr != null)
+                            {
+                                skipCount++;
+                            }
+                            else
+                            {
+                                successCount++;
+                            }
+                        }
+
                         order.Status = 1;
                         order.UpdatedAt = DateTime.Now;
                         await Db.Updateable(order).ExecuteCommandAsync();
 
-                        var stockName = await StockNames.GetNameAsync(order.StockCode);
-                        Api.Logger.Info("水银韭菜机", $"开盘清仓成功：{order.QQ} {order.StockCode}（{stockName}）卖出 {pos.Quantity} 股");
+                        Api.Logger.Info("水银韭菜机", $"开盘清仓成功：{order.QQ} 全仓清仓，成功 {successCount} 只, 跳过 {skipCount} 只");
+                        await SendGroupMessageAsync(order.GroupId, $"✅ {order.QQ} 全仓清仓完成！成功 {successCount} 只, 跳过 {skipCount} 只");
+                    }
+                    else
+                    {
+                        // 单只股票清仓
+                        var pos = positions.FirstOrDefault(x => x.StockCode == order.StockCode);
+                        if (pos == null || pos.Quantity <= 0)
+                        {
+                            await MarkOrderFailedAsync(order, "持仓不足");
+                            failedCount++;
+                            continue;
+                        }
 
-                        // 在群里发送成功通知
-                        await SendGroupMessageAsync(order.GroupId, $"✅ {order.StockCode}（{stockName}）开盘清仓成功！卖出 {pos.Quantity} 股");
+                        var parsed = StockCodeParser.ParseNormalized(order.StockCode);
+                        if (!parsed.HasValue)
+                        {
+                            await MarkOrderFailedAsync(order, "股票代码格式错误");
+                            failedCount++;
+                            continue;
+                        }
+
+                        var (market, code) = parsed.Value;
+                        var quote = await Quotes!.GetQuoteAsync(market, code);
+                        if (quote == null || quote.Bid1 <= 0)
+                        {
+                            await MarkOrderFailedAsync(order, "行情获取失败或无买盘");
+                            failedCount++;
+                            continue;
+                        }
+
+                        var (sellOrder, sellErr, fee) = await TradingService.MarketSellAsync(
+                            order.QQ, order.StockCode, pos.Quantity, order.GroupId);
+
+                        if (sellErr != null)
+                        {
+                            await MarkOrderFailedAsync(order, sellErr);
+                            failedCount++;
+                        }
+                        else
+                        {
+                            order.Status = 1;
+                            order.UpdatedAt = DateTime.Now;
+                            await Db.Updateable(order).ExecuteCommandAsync();
+
+                            var stockName = await StockNames.GetNameAsync(order.StockCode);
+                            Api.Logger.Info("水银韭菜机", $"开盘清仓成功：{order.QQ} {order.StockCode}（{stockName}）卖出 {pos.Quantity} 股");
+                            await SendGroupMessageAsync(order.GroupId, $"✅ {order.StockCode}（{stockName}）开盘清仓成功！卖出 {pos.Quantity} 股");
+                        }
                     }
                 }
                 catch (Exception ex)
@@ -260,12 +318,65 @@ public class Entry : PluginBase
 
             if (failedCount > 0)
             {
-                Api.Logger.Warn("水银韭菜机", $"开盘清仓：{failedCount} 个订单执行失败");
+                Api.Logger.Warn("水银韭菜机", $"开盘订单：{failedCount} 个订单执行失败");
             }
         }
         catch (Exception ex)
         {
-            Api.Logger.Error("水银韭菜机", $"开盘清仓执行异常：{ex.Message}");
+            Api.Logger.Error("水银韭菜机", $"开盘订单执行异常：{ex.Message}");
+        }
+    }
+
+    /// <summary>执行开盘梭哈买入订单：用账户全部可用资金按市价买入</summary>
+    private static async Task<bool> ExecuteTomorrowAllInAsync(TomorrowOrder order, Account account)
+    {
+        try
+        {
+            var parsed = StockCodeParser.ParseNormalized(order.StockCode);
+            if (!parsed.HasValue)
+            {
+                await MarkOrderFailedAsync(order, "股票代码格式错误");
+                return false;
+            }
+
+            var (market, code) = parsed.Value;
+            var quote = await Quotes!.GetQuoteAsync(market, code);
+            if (quote == null || quote.Ask1 <= 0)
+            {
+                await MarkOrderFailedAsync(order, "行情获取失败或无卖盘");
+                return false;
+            }
+
+            var price = (decimal)quote.Ask1;
+            var qty = StockCommands.CalcAllInQty(account.Balance, price);
+            if (qty < 100)
+            {
+                await MarkOrderFailedAsync(order, $"可用余额不足以买入 1 手（现价 {price:F2}，需 ≈{price * 100 * 1.0003m:N2} 元）");
+                return false;
+            }
+
+            var (buyOrder, buyErr, fee) = await TradingService.MarketBuyAsync(
+                order.QQ, order.StockCode, qty, order.GroupId);
+
+            if (buyErr != null)
+            {
+                await MarkOrderFailedAsync(order, buyErr);
+                return false;
+            }
+
+            order.Status = 1;
+            order.UpdatedAt = DateTime.Now;
+            await Db.Updateable(order).ExecuteCommandAsync();
+
+            var stockName = await StockNames.GetNameAsync(order.StockCode);
+            Api.Logger.Info("水银韭菜机", $"开盘梭哈成功：{order.QQ} {order.StockCode}（{stockName}）买入 {qty} 股，成交价 {price:F2}");
+            await SendGroupMessageAsync(order.GroupId, $"✅ {order.StockCode}（{stockName}）开盘梭哈成功！买入 {qty} 股，成交价 {price:F2}");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            await MarkOrderFailedAsync(order, $"执行异常：{ex.Message}");
+            return false;
         }
     }
 
@@ -277,8 +388,9 @@ public class Entry : PluginBase
         order.UpdatedAt = DateTime.Now;
         await Db.Updateable(order).ExecuteCommandAsync();
 
-        // 在群里发送失败通知
-        await SendGroupMessageAsync(order.GroupId, $"⚠️ {order.QQ} 的开盘清仓 {order.StockCode} 因 {reason} 执行失败，请手动处理");
+        // 在群里发送失败通知（区分清仓/梭哈）
+        var actionName = order.OrderType == 1 ? "开盘梭哈" : "开盘清仓";
+        await SendGroupMessageAsync(order.GroupId, $"⚠️ {order.QQ} 的{actionName} {order.StockCode} 因 {reason} 执行失败，请手动处理");
     }
 
     /// <summary>发送群消息</summary>

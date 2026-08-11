@@ -210,7 +210,7 @@ public static class SafetyChecker
             return 0m;
         }
 
-        var days = (DateTime.UtcNow - account.LastInterestCalculated).TotalDays;
+        var days = (DateTime.Now - account.LastInterestCalculated).TotalDays;
         if (days <= 0) return 0m;
 
         return Math.Round(account.DebtBalance * (decimal)days * config.CreditInterestRate, 2);
