@@ -1172,33 +1172,54 @@ public class StockCommands : CommandHandlerBase
         var (account, err) = await SafetyChecker.RequireAccountAsync(Entry.Db!, qq);
         if (account == null) { await SendAsync(g, p, err!); return EventHandleResult.Block; }
 
-        // 存量账号兼容：CreditLimit 未初始化的账号，借款前兑底同步为配置额度
-        if (account.CreditLimit <= 0)
+        // 加账户并发锁：避免并发借款同时通过额度检查导致超额
+        var sem = TradingService.GetAccountLock(account.Id);
+        await sem.WaitAsync();
+        try
         {
-            account.CreditLimit = Entry.Config.CreditAmount;
-            account.UpdatedAt = DateTime.Now;
-            await Entry.Db!.Updateable(account).ExecuteCommandAsync();
-        }
+            account = await Entry.Db!.Queryable<Account>().FirstAsync(a => a.Id == account.Id);
+            if (account == null) { await SendAsync(g, p, "账户异常"); return EventHandleResult.Block; }
 
-        // 解析金额（支持 '梭哈' 表示用满剩余额度）
-        bool isMax = amount == "梭哈";
-        if (!isMax)
-        {
-            if (!decimal.TryParse(amount, out var requestedAmount) || requestedAmount <= 0)
+            // 存量账号兼容：CreditLimit 未初始化的账号，借款前兑底同步为配置额度
+            if (account.CreditLimit <= 0)
             {
-                await SendAsync(g, p, "⚠️ 借款金额格式错误，请输入数字或 梭哈");
-                return EventHandleResult.Block;
+                account.CreditLimit = Entry.Config.CreditAmount;
+                account.UpdatedAt = DateTime.Now;
+                await Entry.Db.Updateable(account).ExecuteCommandAsync();
             }
 
-            decimal usableLimit = account.CreditLimit - account.DebtBalance;
-            if (requestedAmount > usableLimit)
+            // 解析金额（支持 '梭哈' 表示用满剩余额度）
+            decimal requestedAmount;
+            bool isMax = amount == "梭哈";
+            if (isMax)
             {
-                await SendAsync(g, p, $"⚠️ 借款金额超过剩余额度，剩余额度为 {usableLimit:N2} 元");
-                return EventHandleResult.Block;
+                var remainingLimit = account.CreditLimit - account.DebtBalance;
+                if (remainingLimit <= 0)
+                {
+                    await SendAsync(g, p, "⚠️ 当前无剩余额度可用，请先偿还部分授信");
+                    return EventHandleResult.Block;
+                }
+                requestedAmount = remainingLimit;
+            }
+            else
+            {
+                if (!decimal.TryParse(amount, out var parsed) || parsed <= 0)
+                {
+                    await SendAsync(g, p, "⚠️ 借款金额格式错误，请输入数字或 梭哈");
+                    return EventHandleResult.Block;
+                }
+
+                decimal usableLimit = account.CreditLimit - account.DebtBalance;
+                if (parsed > usableLimit)
+                {
+                    await SendAsync(g, p, $"⚠️ 借款金额超过剩余额度，剩余额度为 {usableLimit:N2} 元");
+                    return EventHandleResult.Block;
+                }
+                requestedAmount = parsed;
             }
 
             // 执行借入
-            await Entry.Db!.UseTranAsync(async () =>
+            await Entry.Db.UseTranAsync(async () =>
             {
                 account.Balance += requestedAmount;
                 account.DebtBalance += requestedAmount;
@@ -1217,40 +1238,13 @@ public class StockCommands : CommandHandlerBase
                 }).ExecuteCommandAsync();
             });
 
+            // 刷新总资产（扣除负债后），保持排行榜账目一致
+            await AccountService.UpdateTotalAssetAsync(account.Id);
+
             await SendAsync(g, p, $"✅ 借款成功！借款金额: {requestedAmount:N2} 元\n当前授信额度: {account.CreditLimit:N2} 元\n当前待还本金: {account.DebtBalance:N2} 元");
             return EventHandleResult.Block;
         }
-
-        // 梭哈：用满剩余额度
-        var remainingLimit = account.CreditLimit - account.DebtBalance;
-        if (remainingLimit <= 0)
-        {
-            await SendAsync(g, p, "⚠️ 当前无剩余额度可用，请先偿还部分授信");
-            return EventHandleResult.Block;
-        }
-
-        // 执行借入
-        await Entry.Db!.UseTranAsync(async () =>
-        {
-            account.Balance += remainingLimit;
-            account.DebtBalance += remainingLimit;
-            account.LastInterestCalculated = DateTime.Now;
-            account.UpdatedAt = DateTime.Now;
-            await Entry.Db.Updateable(account).ExecuteCommandAsync();
-
-            await Entry.Db.Insertable(new CreditRecord
-            {
-                AccountId = account.Id,
-                Type = 1,
-                Amount = remainingLimit,
-                Interest = 0,
-                CreatedAt = DateTime.Now,
-                SourceMessageId = sourceGroupId
-            }).ExecuteCommandAsync();
-        });
-
-        await SendAsync(g, p, $"✅ 借款成功！借款金额: {remainingLimit:N2} 元\n当前授信额度: {account.CreditLimit:N2} 元\n当前待还本金: {account.DebtBalance:N2} 元");
-        return EventHandleResult.Block;
+        finally { sem.Release(); }
     }
 
     [DynamicCommand(nameof(CreditRepayCmd), MatchMode.Regex)]
@@ -1266,51 +1260,64 @@ public class StockCommands : CommandHandlerBase
         var (account, err) = await SafetyChecker.RequireAccountAsync(Entry.Db!, qq);
         if (account == null) { await SendAsync(g, p, err!); return EventHandleResult.Block; }
 
-        if (!decimal.TryParse(amount, out var requestedAmount) || requestedAmount <= 0)
+        // 加账户并发锁：避免并发还款/借款交错导致账目不一致
+        var sem = TradingService.GetAccountLock(account.Id);
+        await sem.WaitAsync();
+        try
         {
-            await SendAsync(g, p, "⚠️ 还款金额格式错误");
-            return EventHandleResult.Block;
-        }
+            account = await Entry.Db!.Queryable<Account>().FirstAsync(a => a.Id == account.Id);
+            if (account == null) { await SendAsync(g, p, "账户异常"); return EventHandleResult.Block; }
 
-        // 拒绝超额还款
-        if (requestedAmount > account.DebtBalance)
-        {
-            await SendAsync(g, p, $"⚠️ 还款金额超过待还本金，当前待还 {account.DebtBalance:N2} 元");
-            return EventHandleResult.Block;
-        }
-
-        // 计算当前待还利息
-        var interest = SafetyChecker.CalculateInterest(account, Entry.Config);
-        var totalRepay = requestedAmount + interest;
-
-        if (account.Balance < totalRepay)
-        {
-            await SendAsync(g, p, $"⚠️ 余额不足，需要 {totalRepay:N2} 元（含利息 {interest:N2} 元）");
-            return EventHandleResult.Block;
-        }
-
-        // 执行偿还
-        await Entry.Db!.UseTranAsync(async () =>
-        {
-            account.Balance -= totalRepay;
-            account.DebtBalance -= requestedAmount;
-            account.LastInterestCalculated = DateTime.Now;
-            account.UpdatedAt = DateTime.Now;
-            await Entry.Db.Updateable(account).ExecuteCommandAsync();
-
-            await Entry.Db.Insertable(new CreditRecord
+            if (!decimal.TryParse(amount, out var requestedAmount) || requestedAmount <= 0)
             {
-                AccountId = account.Id,
-                Type = 2,
-                Amount = requestedAmount,
-                Interest = interest,
-                CreatedAt = DateTime.Now,
-                SourceMessageId = sourceGroupId
-            }).ExecuteCommandAsync();
-        });
+                await SendAsync(g, p, "⚠️ 还款金额格式错误");
+                return EventHandleResult.Block;
+            }
 
-        await SendAsync(g, p, $"✅ 还款成功！偿还本金: {requestedAmount:N2} 元\n支付利息: {interest:N2} 元\n当前待还本金: {account.DebtBalance:N2} 元");
-        return EventHandleResult.Block;
+            // 拒绝超额还款
+            if (requestedAmount > account.DebtBalance)
+            {
+                await SendAsync(g, p, $"⚠️ 还款金额超过待还本金，当前待还 {account.DebtBalance:N2} 元");
+                return EventHandleResult.Block;
+            }
+
+            // 计算当前待还利息
+            var interest = SafetyChecker.CalculateInterest(account, Entry.Config);
+            var totalRepay = requestedAmount + interest;
+
+            if (account.Balance < totalRepay)
+            {
+                await SendAsync(g, p, $"⚠️ 余额不足，需要 {totalRepay:N2} 元（含利息 {interest:N2} 元）");
+                return EventHandleResult.Block;
+            }
+
+            // 执行偿还
+            await Entry.Db!.UseTranAsync(async () =>
+            {
+                account.Balance -= totalRepay;
+                account.DebtBalance -= requestedAmount;
+                account.LastInterestCalculated = DateTime.Now;
+                account.UpdatedAt = DateTime.Now;
+                await Entry.Db.Updateable(account).ExecuteCommandAsync();
+
+                await Entry.Db.Insertable(new CreditRecord
+                {
+                    AccountId = account.Id,
+                    Type = 2,
+                    Amount = requestedAmount,
+                    Interest = interest,
+                    CreatedAt = DateTime.Now,
+                    SourceMessageId = sourceGroupId
+                }).ExecuteCommandAsync();
+            });
+
+            // 刷新总资产（扣除负债后），保持排行榜账目一致
+            await AccountService.UpdateTotalAssetAsync(account.Id);
+
+            await SendAsync(g, p, $"✅ 还款成功！偿还本金: {requestedAmount:N2} 元\n支付利息: {interest:N2} 元\n当前待还本金: {account.DebtBalance:N2} 元");
+            return EventHandleResult.Block;
+        }
+        finally { sem.Release(); }
     }
 
     // ==================== 账户管理 ====================

@@ -13,6 +13,10 @@ public static class TradingService
     private static SemaphoreSlim GetLock(long accountId)
         => AccountLocks.GetOrAdd(accountId, _ => new SemaphoreSlim(1, 1));
 
+    /// <summary>获取账户并发锁（供授信等需要跨命令串行化的操作复用）</summary>
+    internal static SemaphoreSlim GetAccountLock(long accountId)
+        => GetLock(accountId);
+
     // === 市价买入 ===
     public static async Task<(Order? order, string? error, decimal? fee)> MarketBuyAsync(
         long qq, string normalizedCode, int quantity, long? sourceGroupId = null)

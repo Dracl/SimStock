@@ -199,14 +199,9 @@
 
         <!--  Tab 6: 授信设置  -->
         <TabItem Header="授信设置">
-            <Grid Margin="10">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="*" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="*" />
-                </Grid.RowDefinitions>
-                <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto">
-                    <StackPanel MaxWidth="550" Margin="0,10,0,10">
+            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <StackPanel Margin="20">
+                    <StackPanel MaxWidth="550">
                         <TextBlock
                             Margin="0,0,0,20"
                             FontSize="16"
@@ -254,33 +249,28 @@
                             Click="SaveCreditSettings_Click"
                             Content="保存授信设置" />
                     </StackPanel>
-                </ScrollViewer>
 
-                <TextBlock
-                    Grid.Row="1"
-                    Margin="0,15,0,5"
-                    FontSize="14"
-                    FontWeight="Bold"
-                    Text="授信记录" />
-                <Grid Grid.Row="2">
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="*" />
-                    </Grid.RowDefinitions>
-                    <Button
-                        Width="80"
-                        Margin="0,0,0,8"
-                        HorizontalAlignment="Left"
-                        Click="RefreshCreditRecords_Click"
-                        Content="刷新" />
+                    <StackPanel Margin="0,25,0,8" Orientation="Horizontal">
+                        <TextBlock
+                            VerticalAlignment="Center"
+                            FontSize="14"
+                            FontWeight="Bold"
+                            Text="授信记录" />
+                        <Button
+                            Width="60"
+                            Height="26"
+                            Margin="12,0,0,0"
+                            Click="RefreshCreditRecords_Click"
+                            Content="刷新" />
+                    </StackPanel>
                     <DataGrid
                         x:Name="CreditRecordsGrid"
-                        Grid.Row="1"
+                        Height="280"
                         AutoGenerateColumns="True"
                         AutoGeneratingColumn="DataGrid_AutoGeneratingColumn"
                         IsReadOnly="True" />
-                </Grid>
-            </Grid>
+                </StackPanel>
+            </ScrollViewer>
         </TabItem>
 
         <!--  Tab 4: 系统设置  -->

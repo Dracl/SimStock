@@ -160,7 +160,7 @@ public static class AccountService
         var positions = await GetPositionsAsync(accountId);
         if (positions.Count == 0)
         {
-            account.TotalAsset = account.Balance;
+            account.TotalAsset = account.Balance - account.DebtBalance;
             account.CreditLimit = Entry.Config.CreditAmount;
             account.UpdatedAt = DateTime.Now;
             await Db.Updateable(account).ExecuteCommandAsync();
@@ -183,7 +183,7 @@ public static class AccountService
                 marketValue += (decimal)quote.Price * pos.Quantity;
         }
 
-        account.TotalAsset = account.Balance + marketValue;
+        account.TotalAsset = account.Balance + marketValue - account.DebtBalance;
         // 同步更新授信额度（固定额度，不随总资产变动）
         account.CreditLimit = Entry.Config.CreditAmount;
         account.UpdatedAt = DateTime.Now;
@@ -239,7 +239,7 @@ public static class AccountService
         foreach (var account in accounts)
         {
             var mv = marketValues.GetValueOrDefault(account.Id);
-            var newTotal = account.Balance + mv;
+            var newTotal = account.Balance + mv - account.DebtBalance;
             if (account.TotalAsset != newTotal)
             {
                 account.TotalAsset = newTotal;

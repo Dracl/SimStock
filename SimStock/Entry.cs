@@ -161,6 +161,7 @@ public class Entry : PluginBase
         {
             var pendingOrders = await Db!.Queryable<TomorrowOrder>()
                 .Where(o => o.Status == 0)
+                .OrderBy(o => o.OrderType) // 清仓(0) 先执行，梭哈(1) 后执行，避免先买后卖
                 .ToListAsync();
 
             if (pendingOrders.Count == 0)
@@ -254,12 +255,23 @@ public class Entry : PluginBase
                             }
                         }
 
-                        order.Status = 1;
-                        order.UpdatedAt = DateTime.Now;
-                        await Db.Updateable(order).ExecuteCommandAsync();
-
-                        Api.Logger.Info("水银韭菜机", $"开盘清仓成功：{order.QQ} 全仓清仓，成功 {successCount} 只, 跳过 {skipCount} 只");
-                        await SendGroupMessageAsync(order.GroupId, $"✅ {order.QQ} 全仓清仓完成！成功 {successCount} 只, 跳过 {skipCount} 只");
+                        // 部分跳过（T+1/停牌/行情不可用）时，保持订单待执行，下个交易日自动续卖
+                        if (skipCount > 0)
+                        {
+                            order.Status = 0;
+                            order.UpdatedAt = DateTime.Now;
+                            await Db.Updateable(order).ExecuteCommandAsync();
+                            Api.Logger.Info("水银韭菜机", $"开盘清仓部分完成：{order.QQ} 全仓清仓，成功 {successCount} 只, 跳过 {skipCount} 只，下个交易日自动继续");
+                            await SendGroupMessageAsync(order.GroupId, $"⚠️ {order.QQ} 全仓清仓部分完成：成功 {successCount} 只，跳过 {skipCount} 只（T+1/停牌/行情不可用），将在下个交易日自动继续，或使用 /取消开盘清仓 全仓 取消");
+                        }
+                        else
+                        {
+                            order.Status = 1;
+                            order.UpdatedAt = DateTime.Now;
+                            await Db.Updateable(order).ExecuteCommandAsync();
+                            Api.Logger.Info("水银韭菜机", $"开盘清仓成功：{order.QQ} 全仓清仓，成功 {successCount} 只, 跳过 {skipCount} 只");
+                            await SendGroupMessageAsync(order.GroupId, $"✅ {order.QQ} 全仓清仓完成！成功 {successCount} 只, 跳过 {skipCount} 只");
+                        }
                     }
                     else
                     {
