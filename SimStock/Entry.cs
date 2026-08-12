@@ -262,7 +262,7 @@ public class Entry : PluginBase
                             order.UpdatedAt = DateTime.Now;
                             await Db.Updateable(order).ExecuteCommandAsync();
                             Api.Logger.Info("水银韭菜机", $"开盘清仓部分完成：{order.QQ} 全仓清仓，成功 {successCount} 只, 跳过 {skipCount} 只，下个交易日自动继续");
-                            await SendGroupMessageAsync(order.GroupId, $"⚠️ {order.QQ} 全仓清仓部分完成：成功 {successCount} 只，跳过 {skipCount} 只（T+1/停牌/行情不可用），将在下个交易日自动继续，或使用 /取消开盘清仓 全仓 取消");
+                            await SendGroupMessageAsync(order.GroupId, $"⚠️ [CQ:at,qq={order.QQ}] 全仓清仓部分完成：成功 {successCount} 只，跳过 {skipCount} 只（T+1/停牌/行情不可用），将在下个交易日自动继续，或使用 /取消开盘清仓 全仓 取消");
                         }
                         else
                         {
@@ -270,7 +270,7 @@ public class Entry : PluginBase
                             order.UpdatedAt = DateTime.Now;
                             await Db.Updateable(order).ExecuteCommandAsync();
                             Api.Logger.Info("水银韭菜机", $"开盘清仓成功：{order.QQ} 全仓清仓，成功 {successCount} 只, 跳过 {skipCount} 只");
-                            await SendGroupMessageAsync(order.GroupId, $"✅ {order.QQ} 全仓清仓完成！成功 {successCount} 只, 跳过 {skipCount} 只");
+                            await SendGroupMessageAsync(order.GroupId, $"✅ [CQ:at,qq={order.QQ}] 全仓清仓完成！成功 {successCount} 只, 跳过 {skipCount} 只");
                         }
                     }
                     else
@@ -317,7 +317,7 @@ public class Entry : PluginBase
 
                             var stockName = await StockNames.GetNameAsync(order.StockCode);
                             Api.Logger.Info("水银韭菜机", $"开盘清仓成功：{order.QQ} {order.StockCode}（{stockName}）卖出 {pos.Quantity} 股");
-                            await SendGroupMessageAsync(order.GroupId, $"✅ {order.StockCode}（{stockName}）开盘清仓成功！卖出 {pos.Quantity} 股");
+                            await SendGroupMessageAsync(order.GroupId, $"✅ [CQ:at,qq={order.QQ}] {order.StockCode}（{stockName}）开盘清仓成功！卖出 {pos.Quantity} 股");
                         }
                     }
                 }
@@ -382,7 +382,7 @@ public class Entry : PluginBase
 
             var stockName = await StockNames.GetNameAsync(order.StockCode);
             Api.Logger.Info("水银韭菜机", $"开盘梭哈成功：{order.QQ} {order.StockCode}（{stockName}）买入 {qty} 股，成交价 {price:F2}");
-            await SendGroupMessageAsync(order.GroupId, $"✅ {order.StockCode}（{stockName}）开盘梭哈成功！买入 {qty} 股，成交价 {price:F2}");
+            await SendGroupMessageAsync(order.GroupId, $"✅ [CQ:at,qq={order.QQ}] {order.StockCode}（{stockName}）开盘梭哈成功！买入 {qty} 股，成交价 {price:F2}");
             return true;
         }
         catch (Exception ex)
@@ -402,7 +402,7 @@ public class Entry : PluginBase
 
         // 在群里发送失败通知（区分清仓/梭哈）
         var actionName = order.OrderType == 1 ? "开盘梭哈" : "开盘清仓";
-        await SendGroupMessageAsync(order.GroupId, $"⚠️ {order.QQ} 的{actionName} {order.StockCode} 因 {reason} 执行失败，请手动处理");
+        await SendGroupMessageAsync(order.GroupId, $"⚠️ [CQ:at,qq={order.QQ}] 的{actionName} {order.StockCode} 因 {reason} 执行失败，请手动处理");
     }
 
     /// <summary>发送群消息</summary>
