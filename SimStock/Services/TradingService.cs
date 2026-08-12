@@ -43,12 +43,6 @@ public static class TradingService
             return (null, check.error, null);
         }
 
-        check = await SafetyChecker.CheckPendingOrderLimitAsync(Db, account.Id);
-        if (!check.passed)
-        {
-            return (null, check.error, null);
-        }
-
         var quote = await Entry.Quotes!.GetQuoteAsync(market, code);
         if (quote == null)
         {
@@ -638,6 +632,13 @@ public static class TradingService
             }
             else if (freshOrder.OrderType == 3) // 限价卖
             {
+                // 持仓二次校验：挂单期间持仓可能被市价卖出，防止超额卖出
+                var holdingCheck = await SafetyChecker.CheckHoldingsAsync(Db, account.Id, freshOrder.StockCode, freshOrder.Quantity);
+                if (!holdingCheck.passed)
+                {
+                    return;
+                }
+
                 var totalCredit = amount - fee;
 
                 await Db.UseTranAsync(async () =>

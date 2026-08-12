@@ -113,6 +113,8 @@ public static class AccountService
             await Db.Deleteable<TradeRecord>().Where(t => t.AccountId == account.Id).ExecuteCommandAsync();
             await Db.Deleteable<Position>().Where(p => p.AccountId == account.Id).ExecuteCommandAsync();
             await Db.Deleteable<UserGroup>().Where(ug => ug.QQ == qq).ExecuteCommandAsync();
+            await Db.Deleteable<CreditRecord>().Where(c => c.AccountId == account.Id).ExecuteCommandAsync();
+            await Db.Deleteable<TomorrowOrder>().Where(t => t.QQ == qq).ExecuteCommandAsync();
             await Db.Deleteable<Account>().Where(a => a.Id == account.Id).ExecuteCommandAsync();
         });
     }

@@ -9,7 +9,7 @@ namespace SimStock;
 [PluginInfo(
     appId: "me.cqp.luohuaming.SimStock",
     name: "水银韭菜机",
-    version: "1.18.0",
+    version: "1.17.5",
     description: "群聊模拟炒股插件",
     author: "落花茗"
 )]
@@ -177,10 +177,10 @@ public class Entry : PluginBase
                 return;
             }
 
-            // 检查当前是否在交易时段（9:30 之后）
-            if (!TradingHoursChecker.IsInTradingSession())
+            // 检查当前是否在交易时段（9:30 之后）且为交易日（节假日不执行）
+            if (!TradingHoursChecker.IsInTradingSession() || !await ConnMgr!.IsInTradingSessionAsync())
             {
-                Api.Logger.Info("水银韭菜机", "开盘订单：当前非交易时段，跳过执行");
+                Api.Logger.Info("水银韭菜机", "开盘订单：当前非交易时段或非交易日，跳过执行");
                 return;
             }
 
@@ -419,9 +419,11 @@ public class Entry : PluginBase
                 return;
             }
 
-            var inSession = TradingHoursChecker.IsInTradingSession();
+            var isTradingDay = await ConnMgr!.IsTradingDayAsync();
+            var afterClose = DateTime.Now.TimeOfDay >= new TimeSpan(15, 0, 0);
 
-            if (inSession)
+            // 交易日且未收盘（含午休）时尝试结算；非交易日或已收盘才撤销，避免午休/盘中重启误撤挂单
+            if (isTradingDay && !afterClose)
             {
                 API.Logger.Info("水银韭菜机", $"启动时发现 {pending.Count} 个遗留挂单，当前为交易时段，尝试结算");
 

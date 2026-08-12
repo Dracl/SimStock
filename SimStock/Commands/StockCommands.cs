@@ -211,7 +211,7 @@ public class StockCommands : CommandHandlerBase
         return EventHandleResult.Block;
     }
 
-    [DynamicCommand(nameof(AdminAddCmd), MatchMode.Regex)]
+    [DynamicCommand(nameof(AdminAddCmd), MatchMode.Regex, MessageScope.Group)]
     public async Task<EventHandleResult> CmdAdminAdd(GroupMessageContext e, long qq)
     {
         var (w, err) = SafetyChecker.CheckGroupWhitelist(e.FromGroup.Id);
@@ -227,7 +227,7 @@ public class StockCommands : CommandHandlerBase
         return EventHandleResult.Block;
     }
 
-    [DynamicCommand(nameof(AdminListCmd), MatchMode.FullMatch)]
+    [DynamicCommand(nameof(AdminListCmd), MatchMode.FullMatch, MessageScope.Group)]
     public async Task<EventHandleResult> CmdAdminList(GroupMessageContext e)
     {
         var (w, err) = SafetyChecker.CheckGroupWhitelist(e.FromGroup.Id);
@@ -254,7 +254,7 @@ public class StockCommands : CommandHandlerBase
     }
 
     // ==================== 管理员管理（仅群聊） ====================
-    [DynamicCommand(nameof(AdminRemoveCmd), MatchMode.Regex)]
+    [DynamicCommand(nameof(AdminRemoveCmd), MatchMode.Regex, MessageScope.Group)]
     public async Task<EventHandleResult> CmdAdminRemove(GroupMessageContext e, long qq)
     {
         var (w, err) = SafetyChecker.CheckGroupWhitelist(e.FromGroup.Id);
@@ -609,7 +609,7 @@ public class StockCommands : CommandHandlerBase
         return EventHandleResult.Block;
     }
 
-    [DynamicCommand(nameof(RankCmd), MatchMode.FullMatch)]
+    [DynamicCommand(nameof(RankCmd), MatchMode.FullMatch, MessageScope.Group)]
     public async Task<EventHandleResult> CmdRank(GroupMessageContext e)
     {
         var (w, err) = SafetyChecker.CheckGroupWhitelist(e.FromGroup.Id);
@@ -1151,7 +1151,7 @@ public class StockCommands : CommandHandlerBase
         sb.AppendLine();
         sb.AppendLine($"💵 可用余额: {account.Balance:N2} 元");
         sb.AppendLine($"🏦 授信额度: {account.CreditLimit:N2} 元");
-        sb.AppendLine($"📉 当前费率: {Entry.Config.CreditInterestRate * 100m:0.#####}%");
+        sb.AppendLine($"📉 当前费率: {Entry.Config.CreditInterestRate * 100m:0.#####}");
         sb.AppendLine($"📊 待还额度: {account.DebtBalance:N2} 元");
         sb.AppendLine($"💸 待还利息: {interest:N2} 元");
 

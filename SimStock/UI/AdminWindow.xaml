@@ -199,56 +199,88 @@
 
         <!--  Tab 6: 授信设置  -->
         <TabItem Header="授信设置">
-            <ScrollViewer VerticalScrollBarVisibility="Auto">
-                <StackPanel MaxWidth="550" Margin="20">
-                    <TextBlock
-                        Margin="0,0,0,20"
-                        FontSize="16"
-                        FontWeight="Bold"
-                        Text="授信配置" />
+            <Grid Margin="10">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto">
+                    <StackPanel MaxWidth="550" Margin="0,10,0,10">
+                        <TextBlock
+                            Margin="0,0,0,20"
+                            FontSize="16"
+                            FontWeight="Bold"
+                            Text="授信配置" />
 
-                    <GroupBox
-                        Margin="0,0,0,15"
-                        Padding="10"
-                        Header="授信额度">
-                        <StackPanel>
-                            <TextBlock Margin="0,8,0,4" Text="授信额度（元，默认 100000）" />
-                            <TextBox
-                                x:Name="CreditAmountInput"
-                                Width="400"
-                                HorizontalAlignment="Left" />
-                            <TextBlock
-                                Margin="0,2,0,0"
-                                Foreground="Gray"
-                                Text="固定授信额度，不随总资产变动。例如 100000 表示 10 万元额度" />
-                        </StackPanel>
-                    </GroupBox>
+                        <GroupBox
+                            Margin="0,0,0,15"
+                            Padding="10"
+                            Header="授信额度">
+                            <StackPanel>
+                                <TextBlock Margin="0,8,0,4" Text="授信额度（元，默认 100000）" />
+                                <TextBox
+                                    x:Name="CreditAmountInput"
+                                    Width="400"
+                                    HorizontalAlignment="Left" />
+                                <TextBlock
+                                    Margin="0,2,0,0"
+                                    Foreground="Gray"
+                                    Text="固定授信额度，不随总资产变动。例如 100000 表示 10 万元额度" />
+                            </StackPanel>
+                        </GroupBox>
 
-                    <GroupBox
-                        Margin="0,0,0,15"
-                        Padding="10"
-                        Header="日利率（万分之几）">
-                        <StackPanel>
-                            <TextBlock Margin="0,8,0,4" Text="日利率（默认5，即万分之五 0.05%）" />
-                            <TextBox
-                                x:Name="CreditRateInput"
-                                Width="400"
-                                HorizontalAlignment="Left" />
-                            <TextBlock
-                                Margin="0,2,0,0"
-                                Foreground="Gray"
-                                Text="每天产生的利息 = 待还本金 × 日利率。例如 5 表示 0.05%" />
-                        </StackPanel>
-                    </GroupBox>
+                        <GroupBox
+                            Margin="0,0,0,15"
+                            Padding="10"
+                            Header="日利率（万分之几）">
+                            <StackPanel>
+                                <TextBlock Margin="0,8,0,4" Text="日利率（默认5，即万分之五 0.05%）" />
+                                <TextBox
+                                    x:Name="CreditRateInput"
+                                    Width="400"
+                                    HorizontalAlignment="Left" />
+                                <TextBlock
+                                    Margin="0,2,0,0"
+                                    Foreground="Gray"
+                                    Text="每天产生的利息 = 待还本金 × 日利率。例如 5 表示 0.05%" />
+                            </StackPanel>
+                        </GroupBox>
 
+                        <Button
+                            Width="100"
+                            Height="32"
+                            Margin="0,10,0,0"
+                            Click="SaveCreditSettings_Click"
+                            Content="保存授信设置" />
+                    </StackPanel>
+                </ScrollViewer>
+
+                <TextBlock
+                    Grid.Row="1"
+                    Margin="0,15,0,5"
+                    FontSize="14"
+                    FontWeight="Bold"
+                    Text="授信记录" />
+                <Grid Grid.Row="2">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
                     <Button
-                        Width="100"
-                        Height="32"
-                        Margin="0,10,0,0"
-                        Click="SaveCreditSettings_Click"
-                        Content="保存授信设置" />
-                </StackPanel>
-            </ScrollViewer>
+                        Width="80"
+                        Margin="0,0,0,8"
+                        HorizontalAlignment="Left"
+                        Click="RefreshCreditRecords_Click"
+                        Content="刷新" />
+                    <DataGrid
+                        x:Name="CreditRecordsGrid"
+                        Grid.Row="1"
+                        AutoGenerateColumns="True"
+                        AutoGeneratingColumn="DataGrid_AutoGeneratingColumn"
+                        IsReadOnly="True" />
+                </Grid>
+            </Grid>
         </TabItem>
 
         <!--  Tab 4: 系统设置  -->

@@ -54,6 +54,10 @@ public partial class AdminWindow : Window
         ["TradeType"] = "方向",
         ["Amount"] = "金额",
         ["TradedAt"] = "成交时间",
+        // CreditRecord
+        ["Type"] = "类型",
+        ["Interest"] = "利息",
+        ["Time"] = "时间",
         // Shared
         ["AvgCost"] = "均价",
         ["Value"] = "值",
@@ -65,6 +69,7 @@ public partial class AdminWindow : Window
         ["OrderType"] = v => (int)v switch { 0 => "市价买", 1 => "限价买", 2 => "市价卖", 3 => "限价卖", _ => v.ToString()! },
         ["Status"] = v => (int)v switch { 0 => "挂单中", 1 => "部分成交", 2 => "已成交", 3 => "已撤销", _ => v.ToString()! },
         ["TradeType"] = v => (int)v == 0 ? "买入" : "卖出",
+        ["Type"] = v => (int)v == 1 ? "借入" : "偿还",
     };
 
     public AdminWindow()
@@ -119,6 +124,7 @@ public partial class AdminWindow : Window
         await LoadPositions();
         await LoadOrders();
         await LoadTrades();
+        await LoadCreditRecords();
         LoadSettings();
         await LoadGroupList();
         LoadCommandTemplates();
@@ -193,6 +199,34 @@ public partial class AdminWindow : Window
             MessageBox.Show($"加载挂单数据失败: {ex.Message}");
         }
     }
+
+    private async Task LoadCreditRecords()
+    {
+        try
+        {
+            var records = await Entry.Db!.Queryable<CreditRecord>()
+                .InnerJoin<Account>((c, a) => c.AccountId == a.Id)
+                .OrderBy(c => c.Id, SqlSugar.OrderByType.Desc)
+                .Take(200)
+                .Select((c, a) => new CreditRecordView
+                {
+                    QQ = a.QQ,
+                    Type = c.Type,
+                    Amount = c.Amount,
+                    Interest = c.Interest,
+                    Time = c.CreatedAt
+                })
+                .ToListAsync();
+            CreditRecordsGrid.ItemsSource = records;
+        }
+        catch (Exception ex)
+        {
+            Entry.Api.Logger.Warn("管理界面", $"加载授信记录失败: {ex.Message}");
+            MessageBox.Show($"加载授信记录失败: {ex.Message}");
+        }
+    }
+
+    private async void RefreshCreditRecords_Click(object sender, RoutedEventArgs e) => await LoadCreditRecords();
 
     private async Task LoadTrades()
     {
@@ -690,4 +724,13 @@ public class CmdTemplateRow
 {
     public string Name { get; set; } = "";
     public string Template { get; set; } = "";
+}
+
+public class CreditRecordView
+{
+    public long QQ { get; set; }
+    public int Type { get; set; }
+    public decimal Amount { get; set; }
+    public decimal Interest { get; set; }
+    public DateTime Time { get; set; }
 }
