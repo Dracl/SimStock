@@ -671,7 +671,7 @@ public class StockCommands : CommandHandlerBase
 
     // ==================== 行情查询 ====================
     [DynamicCommand(nameof(SellCmd), MatchMode.Regex)]
-    public async Task<EventHandleResult> CmdSell(GroupMessageContext? g, PrivateMessageContext? p, string code, int? qty)
+    public async Task<EventHandleResult> CmdSell(GroupMessageContext? g, PrivateMessageContext? p, string code, string? qty)
     {
         var qq = GetQQ(g, p);
         var (groupId, sourceGroupId, _) = ResolveCtx(g, p);
@@ -691,17 +691,7 @@ public class StockCommands : CommandHandlerBase
 
         var stockName = await Entry.StockNames.GetNameAsync(normalized);
 
-        if (qty.HasValue)
-        {
-            // 指定数量：市价卖出
-            var (order, err3, fee) = await TradingService.MarketSellAsync(qq, normalized, qty.Value, sourceGroupId);
-            if (err3 != null) { await SendAsync(g, p, err3); return EventHandleResult.Block; }
-
-            var quote = await Entry.Quotes!.GetQuoteAsync(market, resolvedCode);
-            var price = quote != null ? (decimal)quote.Bid1 : 0;
-            await SendAsync(g, p, $" ✅ 市价卖出成功！\n股票: {stockName}（{StockCodeParser.ToDisplayCode(normalized)}）\n数量: {qty.Value} 股\n成交价: {price:F2} 元\n金额: {price * qty.Value:N2} 元\n手续费: {fee:F2} 元");
-        }
-        else
+        if (string.IsNullOrWhiteSpace(qty))
         {
             // 未指定数量：清仓
             var positions = await AccountService.GetPositionsAsync(account.Id);
@@ -720,6 +710,20 @@ public class StockCommands : CommandHandlerBase
             var quote = await Entry.Quotes!.GetQuoteAsync(market, resolvedCode);
             var price = quote != null ? (decimal)quote.Bid1 : 0;
             await SendAsync(g, p, $" ✅ 清仓成功！\n股票: {stockName}（{StockCodeParser.ToDisplayCode(normalized)}）\n数量: {sellQty} 股\n成交价: {price:F2} 元\n金额: {price * sellQty:N2} 元\n手续费: {fee:F2} 元");
+        }
+        else if (int.TryParse(qty, out var parsedQty) && parsedQty > 0)
+        {
+            // 指定数量：市价卖出
+            var (order, err3, fee) = await TradingService.MarketSellAsync(qq, normalized, parsedQty, sourceGroupId);
+            if (err3 != null) { await SendAsync(g, p, err3); return EventHandleResult.Block; }
+
+            var quote = await Entry.Quotes!.GetQuoteAsync(market, resolvedCode);
+            var price = quote != null ? (decimal)quote.Bid1 : 0;
+            await SendAsync(g, p, $" ✅ 市价卖出成功！\n股票: {stockName}（{StockCodeParser.ToDisplayCode(normalized)}）\n数量: {parsedQty} 股\n成交价: {price:F2} 元\n金额: {price * parsedQty:N2} 元\n手续费: {fee:F2} 元");
+        }
+        else
+        {
+            await SendAsync(g, p, $"⚠️ 数量格式错误：{qty}，请输入正整数");
         }
         return EventHandleResult.Block;
     }
