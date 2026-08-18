@@ -330,7 +330,7 @@ public class StockCommands : CommandHandlerBase
         if (quote.Ask1 <= 0) { await SendAsync(g, p, "该股票当前无卖盘，无法买入"); return EventHandleResult.Block; }
 
         var price = (decimal)quote.Ask1;
-        var qty = CalcAllInQty(account.Balance, price);
+        var qty = TradingService.CalcAllInQuantity(account.Balance, price);
         if (qty < 100) { await SendAsync(g, p, $"可用余额 {account.Balance:N2} 不足以购买 1 手（需 ≈{price * 100 * 1.0003m:N2} 元）"); return EventHandleResult.Block; }
 
         var (order, err3, fee) = await TradingService.MarketBuyAsync(qq, normalized, qty, sourceGroupId);
@@ -509,7 +509,7 @@ public class StockCommands : CommandHandlerBase
         if (resolveErr != null && market == 0) { await SendAsync(g, p, resolveErr); return EventHandleResult.Block; }
 
         // 计算最大可买数量
-        var qty = CalcAllInQty(account.Balance, price);
+        var qty = TradingService.CalcAllInQuantity(account.Balance, price);
         if (qty < 100) { await SendAsync(g, p, $"可用余额 {account.Balance:N2} 不足以购买 1 手（委托价 {price:F2}，需 ≈{price * 100 * 1.0003m:N2} 元）"); return EventHandleResult.Block; }
 
         var sourceMsgId = g?.Message.Id ?? p?.Message.Id;
@@ -1617,26 +1617,4 @@ public class StockCommands : CommandHandlerBase
 
     // ==================== 辅助方法 ====================
 
-    /// <summary>
-    /// 计算梭哈最大可买数量：余额 ÷ (单价 × 1.0003) 向下取整到 100 的倍数，预留手续费
-    /// </summary>
-    internal static int CalcAllInQty(decimal balance, decimal price)
-    {
-        if (price <= 0 || balance <= 0) return 0;
-
-        // 初始估算：按百分比费率
-        var qty = (int)(balance / (price * 1.0003m) / 100) * 100;
-        if (qty < 100) return 0;
-
-        // 验证实际费用，超出则递减
-        while (qty >= 100)
-        {
-            var amount = price * qty;
-            var fee = SafetyChecker.CalcFee(amount);
-            if (amount + fee <= balance) break;
-            qty -= 100;
-        }
-
-        return qty;
-    }
 }

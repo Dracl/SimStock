@@ -17,6 +17,27 @@ public static class TradingService
     internal static SemaphoreSlim GetAccountLock(long accountId)
         => GetLock(accountId);
 
+    /// <summary>
+    /// 计算梭哈最大可买数量：余额扣除预估手续费后，向下取整到 100 股的倍数。
+    /// </summary>
+    public static int CalcAllInQuantity(decimal balance, decimal price)
+    {
+        if (price <= 0 || balance <= 0) return 0;
+
+        var quantity = (int)(balance / (price * 1.0003m) / 100) * 100;
+        while (quantity >= 100)
+        {
+            var amount = price * quantity;
+            if (amount + SafetyChecker.CalcFee(amount) <= balance)
+            {
+                break;
+            }
+            quantity -= 100;
+        }
+
+        return quantity;
+    }
+
     // === 市价买入 ===
     public static async Task<(Order? order, string? error, decimal? fee)> MarketBuyAsync(
         long qq, string normalizedCode, int quantity, long? sourceGroupId = null)

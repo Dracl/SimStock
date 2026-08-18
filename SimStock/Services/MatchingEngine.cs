@@ -19,23 +19,106 @@ public class MatchingEngine : IDisposable
 
     public void Start(CancellationToken externalCt)
     {
-        _cts = CancellationTokenSource.CreateLinkedTokenSource(externalCt);
-        _loopTask = Task.Run(() => RunLoopAsync(_cts.Token), _cts.Token);
+        var cts = CancellationTokenSource.CreateLinkedTokenSource(externalCt);
+        _cts = cts;
+        _loopTask = Task.Run(() => RunLoopAsync(cts.Token), cts.Token);
     }
 
     public async Task StopAsync()
     {
-        if (_cts != null)
+        var cts = _cts;
+        var loopTask = _loopTask;
+        _cts = null;
+        _loopTask = null;
+
+        if (cts is not null)
         {
-            await _cts.CancelAsync();
-            _cts.Dispose();
-            _cts = null;
+            await cts.CancelAsync();
         }
 
-        if (_loopTask != null)
+        if (loopTask is not null)
         {
-            try { await _loopTask; }
+            try { await loopTask; }
             catch (OperationCanceledException) { }
+        }
+
+        cts?.Dispose();
+    }
+
+    /// <summary>
+    /// 插件重启后的挂单恢复：交易日未收盘时按当前行情结算可成交订单，
+    /// 非交易日或收盘后撤销遗留订单。
+    /// </summary>
+    public async Task RecoverPendingOrdersOnStartupAsync()
+    {
+        try
+        {
+            var pending = await Entry.Db!.Queryable<Models.Order>()
+                .Where(o => o.Status == 0)
+                .ToListAsync();
+            if (pending.Count == 0)
+            {
+                return;
+            }
+
+            var isTradingDay = await _connMgr.IsTradingDayAsync();
+            var afterClose = DateTime.Now.TimeOfDay >= new TimeSpan(15, 0, 0);
+            if (isTradingDay && !afterClose)
+            {
+                Entry.Api.Logger.Info("撮合引擎", $"启动时发现 {pending.Count} 个遗留挂单，当前为交易时段，尝试结算");
+                if (await _connMgr.EnsureConnectedAsync() is null)
+                {
+                    Entry.Api.Logger.Warn("撮合引擎", "无法连接行情源，遗留挂单保留待撮合引擎处理");
+                    return;
+                }
+
+                var uniqueStocks = pending
+                    .Select(o => o.StockCode).Distinct()
+                    .Select(StockCodeParser.ParseNormalized)
+                    .Where(p => p.HasValue)
+                    .Select(p => p!.Value)
+                    .ToList();
+                var quotes = await Entry.Quotes!.GetQuotesBatchAsync(uniqueStocks);
+                if (quotes is null)
+                {
+                    Entry.Api.Logger.Warn("撮合引擎", "获取行情失败，遗留挂单保留待撮合引擎处理");
+                    return;
+                }
+
+                foreach (var order in pending)
+                {
+                    if (!quotes.TryGetValue(order.StockCode, out var quote))
+                    {
+                        continue;
+                    }
+
+                    var shouldExecute = order.OrderType == 1
+                        ? quote.Ask1 > 0 && order.Price >= (decimal)quote.Ask1
+                        : order.OrderType == 3 && quote.Bid1 > 0 && order.Price <= (decimal)quote.Bid1;
+                    if (!shouldExecute)
+                    {
+                        continue;
+                    }
+
+                    var executionPrice = order.OrderType == 1 ? (decimal)quote.Ask1 : (decimal)quote.Bid1;
+                    await TradingService.ExecuteOrderAsync(order, executionPrice);
+                    Entry.Api.Logger.Info("撮合引擎", $"启动结算：订单 {order.Id} {order.StockCode} 已成交");
+                }
+            }
+            else
+            {
+                Entry.Api.Logger.Info("撮合引擎", $"启动时发现 {pending.Count} 个遗留挂单，非交易时段，全部撤销");
+                foreach (var order in pending)
+                {
+                    order.Status = 3;
+                    order.UpdatedAt = DateTime.Now;
+                    await Entry.Db!.Updateable(order).ExecuteCommandAsync();
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Entry.Api.Logger.Error("撮合引擎", $"清理遗留挂单异常: {ex.Message}");
         }
     }
 
