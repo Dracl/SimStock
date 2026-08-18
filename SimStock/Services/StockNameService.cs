@@ -12,13 +12,17 @@ namespace SimStock;
 public class StockNameService
 {
     private const string CacheFile = "stocknames.json";
-    private const int CacheHours = 24;
+    private const int CacheHours = 24 * 5;
     private const int BatchSize = 1000;
+    private const int CacheVersion = 2;
+    private const int MaxFetchRetries = 3;
+    private const int FetchRetryDelayMs = 300;
 
     private readonly ConcurrentDictionary<string, string> _names = new();
     private readonly ConcurrentDictionary<string, string> _nameToCode = new(); // 中文名 → 标准化代码
     private readonly string _cachePath;
     private readonly ConnectionManager _connMgr;
+    private readonly SemaphoreSlim _initializeLock = new(1, 1);
     private DateTime _lastFetch;
     private bool _initialized;
 
@@ -120,14 +124,29 @@ public class StockNameService
             return;
         }
 
-        // 1. 尝试从本地文件缓存加载
-        if (TryLoadFromFile())
+        await _initializeLock.WaitAsync();
+        try
         {
-            return;
-        }
+            // 其他并发请求可能已在等待期间完成初始化。
+            if (_initialized)
+            {
+                return;
+            }
 
-        // 2. 从 TDX 服务端拉取
-        await FetchAllAsync();
+            // 1. 尝试从本地文件缓存加载
+            if (TryLoadFromFile())
+            {
+                _initialized = true;
+                return;
+            }
+
+            // 2. 仅在沪深列表都完整时才视为初始化成功。
+            _initialized = await FetchAllAsync();
+        }
+        finally
+        {
+            _initializeLock.Release();
+        }
     }
 
     private bool TryLoadFromFile()
@@ -141,7 +160,10 @@ public class StockNameService
         {
             var json = File.ReadAllText(_cachePath);
             var cache = JsonSerializer.Deserialize<StockNameCache>(json);
-            if (cache is null || (DateTime.Now - cache.FetchedAt).TotalHours >= CacheHours)
+            if (cache is null
+                || cache.Version != CacheVersion
+                || (DateTime.Now - cache.FetchedAt).TotalHours >= CacheHours
+                || !IsCompleteCache(cache))
             {
                 return false;
             }
@@ -152,57 +174,90 @@ public class StockNameService
             }
 
             _lastFetch = cache.FetchedAt;
-            _initialized = true;
             return true;
         }
-        catch
+        catch (Exception ex)
         {
+            LogWarning($"读取股票名称缓存失败: {ex.Message}");
             return false;
         }
     }
 
-    private async Task FetchAllAsync()
+    private async Task<bool> FetchAllAsync()
     {
         var client = await _connMgr.EnsureConnectedAsync();
         if (client is null)
         {
             // 无网络时尝试加载过期缓存
-            TryLoadStaleCache();
-            _initialized = true;
-            return;
+            return TryLoadStaleCache();
         }
 
         var entries = new List<StockNameEntry>(10000);
+        var marketCounts = new Dictionary<byte, int>();
 
         foreach (var market in new byte[] { TdxConstants.MarketSZ, TdxConstants.MarketSH })
         {
             try
             {
                 // 先获取总数
-                var countCmd = new GetSecurityCountCmd();
-                countCmd.SetParams(market);
-                int total = countCmd.ParseResponse(client.SendPacket(countCmd.BuildRequest()));
-
-                for (ushort start = 0; start < total; start += BatchSize)
+                int total = await SendFetchRequestWithRetryAsync(activeClient =>
                 {
-                    var cmd = new GetSecurityListCmd();
-                    cmd.SetParams(market, start);
-                    var stocks = cmd.ParseResponse(client.SendPacket(cmd.BuildRequest()));
+                    var countCmd = new GetSecurityCountCmd();
+                    countCmd.SetParams(market);
+                    return countCmd.ParseResponse(activeClient.SendPacket(countCmd.BuildRequest()));
+                });
+                if (total <= 0 || total > ushort.MaxValue)
+                {
+                    throw new InvalidDataException($"服务器返回了无效证券数量: {total}");
+                }
+
+                var marketEntries = new List<StockNameEntry>(total);
+                var marketCodes = new HashSet<string>(StringComparer.Ordinal);
+
+                for (var start = 0; start < total; start += BatchSize)
+                {
+                    var stocks = await SendFetchRequestWithRetryAsync(activeClient =>
+                    {
+                        var cmd = new GetSecurityListCmd();
+                        cmd.SetParams(market, checked((ushort)start));
+                        return cmd.ParseResponse(activeClient.SendPacket(cmd.BuildRequest()));
+                    });
+                    var expectedCount = Math.Min(BatchSize, total - start);
+                    if (stocks.Length != expectedCount)
+                    {
+                        throw new InvalidDataException(
+                            $"证券列表分页不完整: start={start}, expected={expectedCount}, actual={stocks.Length}");
+                    }
 
                     foreach (var s in stocks)
                     {
                         var normalized = StockCodeParser.NormalizeCode(market, s.Code);
-                        entries.Add(new StockNameEntry(normalized, s.Name));
+                        if (!marketCodes.Add(normalized))
+                        {
+                            throw new InvalidDataException($"证券列表包含重复代码: {normalized}");
+                        }
+                        marketEntries.Add(new StockNameEntry(normalized, s.Name));
                     }
                 }
+
+                if (marketEntries.Count != total || marketCodes.Count != total)
+                {
+                    throw new InvalidDataException(
+                        $"证券列表总数不一致: expected={total}, received={marketEntries.Count}, unique={marketCodes.Count}");
+                }
+
+                entries.AddRange(marketEntries);
+                marketCounts[market] = total;
             }
-            catch
+            catch (Exception ex)
             {
-                // 某个市场拉取失败，继续尝试下一个
+                // 任一市场不完整时，不得用部分数据覆盖现有缓存。
+                LogWarning($"拉取{GetMarketName(market)}证券列表失败，保留现有缓存: {ex.Message}");
+                return TryLoadStaleCache();
             }
         }
 
-        if (entries.Count > 0)
+        if (marketCounts.Count == 2)
         {
             foreach (var entry in entries)
             {
@@ -210,59 +265,129 @@ public class StockNameService
             }
 
             _lastFetch = DateTime.Now;
-            SaveToFile(entries);
-        }
-        else
-        {
-            // 拉取完全失败，尝试过期缓存
-            TryLoadStaleCache();
+            SaveToFile(entries, marketCounts);
+            return true;
         }
 
-        _initialized = true;
+        return TryLoadStaleCache();
     }
 
-    private void TryLoadStaleCache()
+    private bool TryLoadStaleCache()
     {
         if (!File.Exists(_cachePath))
         {
-            return;
+            return false;
         }
 
         try
         {
             var json = File.ReadAllText(_cachePath);
             var cache = JsonSerializer.Deserialize<StockNameCache>(json);
-            if (cache is null)
+            if (cache is null || cache.Version != CacheVersion || !IsCompleteCache(cache))
             {
-                return;
+                return false;
             }
 
             foreach (var entry in cache.Entries)
             {
-                _names.TryAdd(entry.Code, entry.Name);
-                _nameToCode.TryAdd(entry.Name, entry.Code);
+                AddToIndex(entry.Code, entry.Name);
             }
+
+            _lastFetch = cache.FetchedAt;
+            return true;
         }
-        catch
+        catch (Exception ex)
         {
-            // 缓存损坏，放弃
+            LogWarning($"读取过期股票名称缓存失败: {ex.Message}");
+            return false;
         }
     }
 
-    private void SaveToFile(List<StockNameEntry> entries)
+    private static bool IsCompleteCache(StockNameCache cache)
     {
+        if (cache.MarketCounts is null
+            || !cache.MarketCounts.TryGetValue(TdxConstants.MarketSZ, out var szCount)
+            || !cache.MarketCounts.TryGetValue(TdxConstants.MarketSH, out var shCount)
+            || szCount <= 0 || shCount <= 0)
+        {
+            return false;
+        }
+
+        var uniqueCodes = cache.Entries.Select(x => x.Code).ToHashSet(StringComparer.Ordinal);
+        var cachedSzCount = uniqueCodes.Count(x => x.StartsWith("sz", StringComparison.Ordinal));
+        var cachedShCount = uniqueCodes.Count(x => x.StartsWith("sh", StringComparison.Ordinal));
+        return cachedSzCount == szCount && cachedShCount == shCount;
+    }
+
+    /// <summary>
+    /// 单个 TDX 拉取请求的静默重试。首次请求失败后最多再试 3 次；
+    /// 若失败使连接断开，每次重试均会重新通过 ConnectionManager 获取连接。
+    /// </summary>
+    private async Task<T> SendFetchRequestWithRetryAsync<T>(Func<TdxClient, T> request)
+    {
+        Exception? lastException = null;
+
+        for (var retry = 0; retry <= MaxFetchRetries; retry++)
+        {
+            try
+            {
+                var activeClient = await _connMgr.EnsureConnectedAsync();
+                if (activeClient is null)
+                {
+                    throw new IOException("无法连接 TDX 行情服务器");
+                }
+
+                return request(activeClient);
+            }
+            catch (Exception ex)
+            {
+                lastException = ex;
+                if (retry == MaxFetchRetries)
+                {
+                    break;
+                }
+
+                // 中间重试不记录日志，避免短暂网络抖动污染插件日志。
+                await Task.Delay(FetchRetryDelayMs);
+            }
+        }
+
+        throw new InvalidOperationException(
+            $"TDX 请求连续失败，已重试 {MaxFetchRetries} 次", lastException);
+    }
+
+    private void SaveToFile(List<StockNameEntry> entries, Dictionary<byte, int> marketCounts)
+    {
+        string? tempPath = null;
         try
         {
-            var cache = new StockNameCache(DateTime.Now, entries);
-            File.WriteAllText(_cachePath, JsonSerializer.Serialize(cache));
+            var cache = new StockNameCache(DateTime.Now, entries, CacheVersion, marketCounts);
+            tempPath = _cachePath + "." + Guid.NewGuid().ToString("N") + ".tmp";
+            File.WriteAllText(tempPath, JsonSerializer.Serialize(cache));
+            File.Move(tempPath, _cachePath, overwrite: true);
         }
-        catch
+        catch (Exception ex)
         {
-            // 忽略写缓存失败
+            LogWarning($"保存股票名称缓存失败: {ex.Message}");
+            if (tempPath is not null)
+            {
+                try { File.Delete(tempPath); } catch { }
+            }
         }
+    }
+
+    private static string GetMarketName(byte market) => market == TdxConstants.MarketSZ ? "深市" : "沪市";
+
+    private static void LogWarning(string message)
+    {
+        try { Entry.Api?.Logger.Warn("股票名称", message); } catch { }
     }
 }
 
 internal record StockNameEntry(string Code, string Name);
 
-internal record StockNameCache(DateTime FetchedAt, List<StockNameEntry> Entries);
+internal record StockNameCache(
+    DateTime FetchedAt,
+    List<StockNameEntry> Entries,
+    int Version = 0,
+    Dictionary<byte, int>? MarketCounts = null);
