@@ -103,6 +103,12 @@ public class ConnectionManager : IDisposable
         return await _holidayClient.IsTradingDayAsync(DateTime.Now);
     }
 
+    /// <summary>判断今天是否为交易日（不考虑具体时段，节假日返回 false）</summary>
+    public async Task<bool> IsTradingDayAsync()
+    {
+        return await _holidayClient.IsTradingDayAsync(DateTime.Now);
+    }
+
     public async Task RefreshBestIpAsync()
     {
         try

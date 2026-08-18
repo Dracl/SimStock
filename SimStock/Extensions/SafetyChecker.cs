@@ -201,4 +201,18 @@ public static class SafetyChecker
         var fee = amount * 0.0003m;
         return fee < 5m ? 5m : Math.Round(fee, 2);
     }
+
+    /// <summary>计算授信待还利息：本金 × 日利率 × 天数</summary>
+    public static decimal CalculateInterest(Account account, ConfigService config)
+    {
+        if (account.DebtBalance <= 0 || config.CreditInterestRate <= 0)
+        {
+            return 0m;
+        }
+
+        var days = (DateTime.Now - account.LastInterestCalculated).TotalDays;
+        if (days <= 0) return 0m;
+
+        return Math.Round(account.DebtBalance * (decimal)days * config.CreditInterestRate, 2);
+    }
 }

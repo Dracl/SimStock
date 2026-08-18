@@ -30,6 +30,7 @@ public static class AccountService
             QQ = qq,
             Balance = Entry.Config.InitialCapital,
             TotalAsset = Entry.Config.InitialCapital,
+            CreditLimit = Entry.Config.CreditAmount,
             CreatedAt = DateTime.Now,
             UpdatedAt = DateTime.Now
         };
@@ -112,6 +113,8 @@ public static class AccountService
             await Db.Deleteable<TradeRecord>().Where(t => t.AccountId == account.Id).ExecuteCommandAsync();
             await Db.Deleteable<Position>().Where(p => p.AccountId == account.Id).ExecuteCommandAsync();
             await Db.Deleteable<UserGroup>().Where(ug => ug.QQ == qq).ExecuteCommandAsync();
+            await Db.Deleteable<CreditRecord>().Where(c => c.AccountId == account.Id).ExecuteCommandAsync();
+            await Db.Deleteable<TomorrowOrder>().Where(t => t.QQ == qq).ExecuteCommandAsync();
             await Db.Deleteable<Account>().Where(a => a.Id == account.Id).ExecuteCommandAsync();
         });
     }
@@ -157,7 +160,8 @@ public static class AccountService
         var positions = await GetPositionsAsync(accountId);
         if (positions.Count == 0)
         {
-            account.TotalAsset = account.Balance;
+            account.TotalAsset = account.Balance - account.DebtBalance;
+            account.CreditLimit = Entry.Config.CreditAmount;
             account.UpdatedAt = DateTime.Now;
             await Db.Updateable(account).ExecuteCommandAsync();
             return;
@@ -179,7 +183,9 @@ public static class AccountService
                 marketValue += (decimal)quote.Price * pos.Quantity;
         }
 
-        account.TotalAsset = account.Balance + marketValue;
+        account.TotalAsset = account.Balance + marketValue - account.DebtBalance;
+        // 同步更新授信额度（固定额度，不随总资产变动）
+        account.CreditLimit = Entry.Config.CreditAmount;
         account.UpdatedAt = DateTime.Now;
         await Db.Updateable(account).ExecuteCommandAsync();
     }
@@ -194,7 +200,17 @@ public static class AccountService
             .Where(p => accountIds.Contains(p.AccountId) && p.Quantity > 0)
             .ToListAsync();
 
-        if (allPositions.Count == 0) return;
+        if (allPositions.Count == 0)
+        {
+            // 无持仓时也同步授信额度
+            foreach (var account in accounts)
+            {
+                account.CreditLimit = Entry.Config.CreditAmount;
+                account.UpdatedAt = DateTime.Now;
+                await Db.Updateable(account).ExecuteCommandAsync();
+            }
+            return;
+        }
 
         var uniqueStocks = allPositions
             .Select(p => StockCodeParser.ParseNormalized(p.StockCode))
@@ -223,10 +239,12 @@ public static class AccountService
         foreach (var account in accounts)
         {
             var mv = marketValues.GetValueOrDefault(account.Id);
-            var newTotal = account.Balance + mv;
+            var newTotal = account.Balance + mv - account.DebtBalance;
             if (account.TotalAsset != newTotal)
             {
                 account.TotalAsset = newTotal;
+                // 同步更新授信额度（固定额度，不随总资产变动）
+                account.CreditLimit = Entry.Config.CreditAmount;
                 account.UpdatedAt = DateTime.Now;
                 await Db.Updateable(account).ExecuteCommandAsync();
             }

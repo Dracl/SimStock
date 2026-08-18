@@ -13,6 +13,12 @@ public class ConfigService
 
     public decimal InitialCapital { get; set; } = 1_000_000m;
 
+    /// <summary>授信额度（固定额度，默认 10 万），用户可自定义</summary>
+    public decimal CreditAmount { get; set; } = 100000m;
+
+    /// <summary>日利率（默认万分之五 0.05%）</summary>
+    public decimal CreditInterestRate { get; set; } = 0.0005m;
+
     public string CustomHelpText { get; set; } = "";
 
     public bool HelpForwardSend { get; set; } = true;
@@ -39,7 +45,6 @@ public class ConfigService
         ["Buy"] = "/买入股票",
         ["LimitBuy"] = "/限价买入",
         ["Sell"] = "/卖出股票",
-        ["SellAll"] = "/现价卖出",
         ["LimitSell"] = "/限价卖出",
         ["AllIn"] = "/梭哈",
         ["LimitAllIn"] = "/限价梭哈",
@@ -50,6 +55,13 @@ public class ConfigService
         ["Help"] = "/股票帮助",
         ["ClearOne"] = "/清仓",
         ["ClearAll"] = "/全部清仓",
+        ["Credit"] = "/授信额度",
+        ["CreditUse"] = "/使用授信",
+        ["CreditRepay"] = "/偿还授信",
+        ["TomorrowClear"] = "/开盘清仓",
+        ["TomorrowClearCancel"] = "/取消开盘清仓",
+        ["TomorrowAllIn"] = "/开盘梭哈",
+        ["TomorrowAllInCancel"] = "/取消开盘梭哈",
     };
 
     /// <summary>Regex 型命令的固定参数后缀（不可修改，防止破坏命名组）</summary>
@@ -63,13 +75,18 @@ public class ConfigService
         ["Price"] = @"\s+(?<code>\w{2,8})",
         ["Buy"] = @"\s+(?<code>\w{2,8})\s+(?<qty>\d+)",
         ["LimitBuy"] = @"\s+(?<code>\w{2,8})\s+(?<qty>\d+)\s+(?<price>\d+(\.\d+)?)",
-        ["Sell"] = @"\s+(?<code>\w{2,8})\s+(?<qty>\d+)",
-        ["SellAll"] = @"\s+(?<code>\w{2,8})",
+        ["Sell"] = @"\s+(?<code>\w{2,8})(?:\s+(?<qty>\d+))?",
         ["LimitSell"] = @"\s+(?<code>\w{2,8})\s+(?<qty>\d+)\s+(?<price>\d+(\.\d+)?)",
         ["AllIn"] = @"\s+(?<code>\w{2,8})",
         ["LimitAllIn"] = @"\s+(?<code>\w{2,8})\s+(?<price>\d+(\.\d+)?)",
         ["Cancel"] = @"\s+(?<orderId>\d+)",
         ["ClearOne"] = @"\s+(?<code>\w{2,8})",
+        ["CreditUse"] = @"\s+(?<amount>\d+(\.\d+)?|梭哈)",
+        ["CreditRepay"] = @"\s+(?<amount>\d+(\.\d+)?)",
+        ["TomorrowClear"] = @"\s+(?<code>\w{2,8}|全仓)",
+        ["TomorrowClearCancel"] = @"\s+(?<code>\w{2,8}|全仓)",
+        ["TomorrowAllIn"] = @"\s+(?<code>\w{2,8})",
+        ["TomorrowAllInCancel"] = @"\s+(?<code>\w{2,8})",
     };
 
     /// <summary>获取当前触发词</summary>
@@ -140,6 +157,16 @@ public class ConfigService
         if (dict.TryGetValue("HelpForwardSend", out var hfs))
         {
             HelpForwardSend = hfs.Equals("true", StringComparison.CurrentCultureIgnoreCase);
+        }
+
+        if (dict.TryGetValue("CreditAmount", out var ca) && decimal.TryParse(ca, out var vCa))
+        {
+            CreditAmount = vCa;
+        }
+
+        if (dict.TryGetValue("CreditInterestRate", out var ci) && decimal.TryParse(ci, out var vCi))
+        {
+            CreditInterestRate = vCi;
         }
     }
 

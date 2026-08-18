@@ -15,6 +15,7 @@ public class QuoteService
     /// </summary>
     public async Task<(byte market, string code, string normalizedCode, string? error)> ResolveCodeAsync(string input)
     {
+        if (string.IsNullOrEmpty(input)) return (0, "", "", "股票代码不能为空");
         // 1. 带前缀解析: sz000001, sh600000 等
         var parsed = StockCodeParser.TryParseWithPrefix(input);
         if (parsed.HasValue)
@@ -36,7 +37,8 @@ public class QuoteService
             }
 
             // 3. 无法推断，连接行情源实际查询
-            var client = await Entry.ConnMgr!.EnsureConnectedAsync();
+            if (Entry.ConnMgr == null) return (0, "", "", "行情服务未就绪，请稍后重试");
+            var client = await Entry.ConnMgr.EnsureConnectedAsync();
             if (client == null)
                 return (0, "", "", "行情服务暂不可用，请稍后重试");
 
@@ -82,18 +84,21 @@ public class QuoteService
         }
 
         // 5. 尝试用中文名称搜索
-        var (exactMatch, candidates) = await Entry.StockNames.SearchByNameAsync(input);
-        if (exactMatch != null)
+        if (Entry.StockNames != null)
         {
-            var p = StockCodeParser.ParseNormalized(exactMatch);
-            if (p.HasValue)
-                return (p.Value.market, p.Value.code, exactMatch, null);
-        }
+            var (exactMatch, candidates) = await Entry.StockNames.SearchByNameAsync(input);
+            if (exactMatch != null)
+            {
+                var p = StockCodeParser.ParseNormalized(exactMatch);
+                if (p.HasValue)
+                    return (p.Value.market, p.Value.code, exactMatch, null);
+            }
 
-        if (candidates.Count > 0)
-        {
-            var hints = string.Join("\n", candidates.Select(c => $"  {c.code}  {c.name}"));
-            return (0, "", "", $"未找到与「{input}」匹配的股票，您是否要找:\n{hints}");
+            if (candidates.Count > 0)
+            {
+                var hints = string.Join("\n", candidates.Select(c => $"  {c.code}  {c.name}"));
+                return (0, "", "", $"未找到与「{input}」匹配的股票，您是否要找:\n{hints}");
+            }
         }
 
         return (0, "", "", $"代码 {input} 无法识别，请使用 sz/sh/bj 前缀指定交易所，或输入股票中文名称");
