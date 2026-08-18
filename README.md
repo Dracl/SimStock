@@ -3,7 +3,7 @@
 QQ群聊的模拟炒股插件。
 [AMN2](https://github.com/Hellobaka/Another-Mirai-Native2) 插件，要求 AMN2 版本 2.13.1 以上。
 
-Fully Developed by DeepSeek V4 Pro & Qwen 3.6 35B.
+Fully Developed by DeepSeek V4 Pro
 
 
 ```plain
