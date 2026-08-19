@@ -83,10 +83,10 @@ public sealed class TomorrowOrderEngine : IDisposable
     }
 
     /// <summary>
-    /// 计算下一次候选执行时间：盘前在 9:31 执行，午间休市在 13:01 执行，
+    /// 计算下一次候选执行时间：盘前在 9:31 执行，9:31 过后的工作日内（含午间休市）在 13:01 执行，
     /// 盘后则顺延至下一个工作日的 9:31。
     /// </summary>
-    private static DateTime CalculateNextExecutionTime(DateTime now)
+    public static DateTime CalculateNextExecutionTime(DateTime now)
     {
         var morningOpen = now.Date.AddHours(9).AddMinutes(31);
         if (now.DayOfWeek is not (DayOfWeek.Saturday or DayOfWeek.Sunday) && morningOpen > now)
@@ -95,7 +95,7 @@ public sealed class TomorrowOrderEngine : IDisposable
         }
 
         var afternoonOpen = now.Date.AddHours(13).AddMinutes(1);
-        if (now.DayOfWeek is not (DayOfWeek.Saturday or DayOfWeek.Sunday) && now.TimeOfDay >= new TimeSpan(11, 30, 1) && afternoonOpen > now)
+        if (now.DayOfWeek is not (DayOfWeek.Saturday or DayOfWeek.Sunday) && morningOpen <= now && afternoonOpen > now)
         {
             return afternoonOpen;
         }
@@ -108,6 +108,32 @@ public sealed class TomorrowOrderEngine : IDisposable
 
         return nextTradingDay.AddHours(9).AddMinutes(31);
     }
+
+    /// <summary>
+    /// 将执行时间格式化为对用户友好的表述：当天为"今天 13:01"，
+    /// 次日为"明天 9:31"，更远的日期为"8/20 周三 9:31"。
+    /// </summary>
+    public static string FormatExecutionTime(DateTime time)
+    {
+        var today = DateTime.Today;
+        var prefix = time.Date == today
+            ? "今天"
+            : time.Date == today.AddDays(1)
+                ? "明天"
+                : $"{time:M/d} 周{ChineseWeekday(time.DayOfWeek)}";
+        return $"{prefix} {time:H:mm}";
+    }
+
+    private static string ChineseWeekday(DayOfWeek day) => day switch
+    {
+        DayOfWeek.Monday => "一",
+        DayOfWeek.Tuesday => "二",
+        DayOfWeek.Wednesday => "三",
+        DayOfWeek.Thursday => "四",
+        DayOfWeek.Friday => "五",
+        DayOfWeek.Saturday => "六",
+        _ => "日"
+    };
 
     private async Task ExecutePendingOrdersAsync()
     {

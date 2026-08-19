@@ -950,7 +950,8 @@ public class StockCommands : CommandHandlerBase
         };
         await Entry.Db.Insertable(order).ExecuteCommandAsync();
 
-        await SendAsync(g, p, $"✅ 已预约开盘清仓：{displayCode}，将在下一个交易日开盘后执行");
+        var execTime = TomorrowOrderEngine.FormatExecutionTime(TomorrowOrderEngine.CalculateNextExecutionTime(DateTime.Now));
+        await SendAsync(g, p, $"✅ 已预约开盘清仓：{displayCode}，将在 {execTime} 执行");
         return EventHandleResult.Block;
     }
 
@@ -1063,7 +1064,8 @@ public class StockCommands : CommandHandlerBase
         };
         await Entry.Db.Insertable(order).ExecuteCommandAsync();
 
-        await SendAsync(g, p, $"✅ 已预约开盘梭哈：{displayCode}，将在下一个交易日开盘后用全部可用资金买入");
+        var execTime = TomorrowOrderEngine.FormatExecutionTime(TomorrowOrderEngine.CalculateNextExecutionTime(DateTime.Now));
+        await SendAsync(g, p, $"✅ 已预约开盘梭哈：{displayCode}，将在 {execTime} 用全部可用资金买入");
         return EventHandleResult.Block;
     }
 
@@ -1379,9 +1381,9 @@ public class StockCommands : CommandHandlerBase
             {t("Cancel")} 订单号   撤销挂单
             {t("ClearOne")} 代码     清仓指定股票（全仓卖出）
             {t("ClearAll")}          清仓全部持仓
-            {t("TomorrowClear")} 代码/全仓  预约开盘清仓（非交易时段使用）
+            {t("TomorrowClear")} 代码/全仓  预约下一开盘（9:31/13:01）清仓
             {t("TomorrowClearCancel")} 代码/全仓  取消预约开盘清仓
-            {t("TomorrowAllIn")} 代码   预约开盘梭哈（非交易时段使用）
+            {t("TomorrowAllIn")} 代码   预约下一开盘（9:31/13:01）全仓买入
             {t("TomorrowAllInCancel")} 代码  取消预约开盘梭哈
             {t("Credit")}            查询授信额度与欠款
             {t("CreditUse")} 金额   使用授信借款（梭哈表示用满剩余额度）
