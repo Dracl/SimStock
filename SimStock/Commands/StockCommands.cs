@@ -1234,7 +1234,7 @@ public class StockCommands : CommandHandlerBase
         // 存量账号兼容：建号早于授信功能、CreditLimit 未初始化的账号，查询时兜底同步为配置额度
         if (account.CreditLimit <= 0)
         {
-            account.CreditLimit = Entry.Config.CreditAmount;
+            account.CreditLimit = Entry.Config.EffectiveCreditAmount;
             account.UpdatedAt = DateTime.Now;
             await Entry.Db!.Updateable(account).ExecuteCommandAsync();
         }
@@ -1279,7 +1279,7 @@ public class StockCommands : CommandHandlerBase
             // 存量账号兼容：CreditLimit 未初始化的账号，借款前兑底同步为配置额度
             if (account.CreditLimit <= 0)
             {
-                account.CreditLimit = Entry.Config.CreditAmount;
+                account.CreditLimit = Entry.Config.EffectiveCreditAmount;
                 account.UpdatedAt = DateTime.Now;
                 await Entry.Db.Updateable(account).ExecuteCommandAsync();
             }

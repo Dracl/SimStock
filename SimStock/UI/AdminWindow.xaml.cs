@@ -258,8 +258,49 @@ public partial class AdminWindow : Window
 
     private void LoadCreditSettings()
     {
-        CreditAmountInput.Text = Entry.Config.CreditAmount.ToString("F0");
+        var effective = Entry.Config.EffectiveCreditAmount;
+        var capital = Entry.Config.InitialCapital;
+        _syncingCredit = true;
+        CreditAmountInput.Text = effective.ToString("F0");
+        if (capital > 0)
+        {
+            CreditPctInput.IsEnabled = true;
+            CreditPctInput.Text = (effective / capital * 100m).ToString("0.##");
+        }
+        else
+        {
+            CreditPctInput.IsEnabled = false;
+            CreditPctInput.Text = "";
+        }
         CreditRateInput.Text = (Entry.Config.CreditInterestRate * 10000).ToString("F0"); // 万分之几
+        _syncingCredit = false;
+    }
+
+    /// <summary>联动同步标记：程序化更新另一个输入框时防止 TextChanged 递归</summary>
+    private bool _syncingCredit;
+
+    /// <summary>百分比 → 金额：金额 = 百分比/100 × 初始资金设置</summary>
+    private void CreditPctInput_TextChanged(object sender, System.Windows.Controls.TextChangedEventArgs e)
+    {
+        if (_syncingCredit) return;
+        if (CreditAmountInput.IsKeyboardFocusWithin) return;
+        if (Entry.Config.InitialCapital <= 0) return;
+        if (!decimal.TryParse(CreditPctInput.Text.Trim(), out var pct)) return;
+        _syncingCredit = true;
+        CreditAmountInput.Text = (pct / 100m * Entry.Config.InitialCapital).ToString("0.##");
+        _syncingCredit = false;
+    }
+
+    /// <summary>金额 → 百分比：百分比 = 金额/初始资金设置 × 100</summary>
+    private void CreditAmountInput_TextChanged(object sender, System.Windows.Controls.TextChangedEventArgs e)
+    {
+        if (_syncingCredit) return;
+        if (CreditPctInput.IsKeyboardFocusWithin) return;
+        if (Entry.Config.InitialCapital <= 0) return;
+        if (!decimal.TryParse(CreditAmountInput.Text.Trim(), out var amount)) return;
+        _syncingCredit = true;
+        CreditPctInput.Text = (amount / Entry.Config.InitialCapital * 100m).ToString("0.##");
+        _syncingCredit = false;
     }
 
     private async void SaveCreditSettings_Click(object sender, RoutedEventArgs e)
@@ -268,10 +309,24 @@ public partial class AdminWindow : Window
         {
             var db = Entry.Db!;
 
-            if (decimal.TryParse(CreditAmountInput.Text.Trim(), out var creditAmount) && creditAmount >= 0)
+            // 解析最终额度：优先取金额输入；金额为空/非法时按百分比反算
+            decimal creditAmount;
+            if (decimal.TryParse(CreditAmountInput.Text.Trim(), out var amount) && amount >= 0)
             {
-                await Entry.Config.SetAsync(db, "CreditAmount", creditAmount.ToString("F0"));
+                creditAmount = amount;
             }
+            else if (Entry.Config.InitialCapital > 0
+                     && decimal.TryParse(CreditPctInput.Text.Trim(), out var pct) && pct >= 0)
+            {
+                creditAmount = pct / 100m * Entry.Config.InitialCapital;
+            }
+            else
+            {
+                MessageBox.Show("请填写有效的授信额度金额或百分比", "提示", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            await Entry.Config.SetAsync(db, "CreditAmount", creditAmount.ToString("F0"));
 
             if (decimal.TryParse(CreditRateInput.Text.Trim(), out var ratePerWan) && ratePerWan >= 0)
             {
