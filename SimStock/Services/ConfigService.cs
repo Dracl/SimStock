@@ -52,6 +52,7 @@ public class ConfigService
         ["Rank"] = "/股票排行",
         ["GlobalRank"] = "/全局排行",
         ["History"] = "/历史订单",
+        ["OrderQuery"] = "/查询订单",
         ["Help"] = "/股票帮助",
         ["ClearOne"] = "/清仓",
         ["ClearAll"] = "/全部清仓",

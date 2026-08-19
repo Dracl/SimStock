@@ -69,6 +69,8 @@ public class StockCommands : CommandHandlerBase
 
     public string LimitSellCmd => Entry.Config.GetCommandTemplate("LimitSell");
 
+    public string OrderQueryCmd => Entry.Config.GetCommandTemplate("OrderQuery");
+
     public string PriceCmd => Entry.Config.GetCommandTemplate("Price");
 
     public string RankCmd => Entry.Config.GetCommandTemplate("Rank");
@@ -441,6 +443,110 @@ public class StockCommands : CommandHandlerBase
             sb.AppendLine();
         }
         await SendAsync(g, p, sb.ToString(), true);
+        return EventHandleResult.Block;
+    }
+
+    // ==================== 订单查询 ====================
+    [DynamicCommand(nameof(OrderQueryCmd), MatchMode.FullMatch)]
+    public async Task<EventHandleResult> CmdOrderQuery(GroupMessageContext? g, PrivateMessageContext? p)
+    {
+        var qq = GetQQ(g, p);
+        var (groupId, _, _) = ResolveCtx(g, p);
+        if (!await CheckAccess(g, p, qq))
+        {
+            return EventHandleResult.Block;
+        }
+
+        var account = await AccountService.GetAccountAsync(qq);
+        if (account == null) { await SendAsync(g, p, $"⚠️ 请先使用 {Entry.Config.GetTrigger("Register")} 创建账户"); return EventHandleResult.Block; }
+
+        // 限价挂单中订单（1=限价买 3=限价卖），按挂出先后排序
+        var orders = await Entry.Db!.Queryable<Order>()
+            .Where(o => o.AccountId == account.Id && o.Status == 0 && (o.OrderType == 1 || o.OrderType == 3))
+            .OrderBy(o => o.Id)
+            .ToListAsync();
+
+        // 待执行的开盘预约（0=清仓 1=梭哈）
+        var reservations = await Entry.Db!.Queryable<TomorrowOrder>()
+            .Where(o => o.QQ == qq && o.Status == 0)
+            .OrderBy(o => o.Id)
+            .ToListAsync();
+
+        if (orders.Count == 0 && reservations.Count == 0)
+        {
+            await SendAsync(g, p, "📋 当前无挂单，也无开盘预约");
+            return EventHandleResult.Block;
+        }
+
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine($"📋 当前订单（挂单 {orders.Count} 笔 / 开盘预约 {reservations.Count} 笔）");
+        sb.AppendLine();
+
+        // --- 限价挂单 ---
+        if (orders.Count == 0)
+        {
+            sb.AppendLine("【限价挂单】无");
+        }
+        else
+        {
+            sb.AppendLine("【限价挂单】");
+            var names = await Entry.StockNames.GetNamesAsync(orders.Select(o => o.StockCode));
+            for (var i = 0; i < orders.Count; i++)
+            {
+                var o = orders[i];
+                var dir = o.OrderType == 1 ? "限价买入" : "限价卖出";
+                names.TryGetValue(o.StockCode, out var stockName);
+                sb.AppendLine($"{i + 1}. {dir} {stockName} {StockCodeParser.ToDisplayCode(o.StockCode)}");
+                sb.AppendLine($"   限价 {o.Price:F2} | 数量 {o.Quantity} 股 | 约 {o.Price * o.Quantity:N2} 元");
+                sb.AppendLine($"   单号 #{o.Id} | {o.CreatedAt:M/d HH:mm} 挂出");
+            }
+        }
+
+        sb.AppendLine();
+
+        // --- 开盘预约 ---
+        if (reservations.Count == 0)
+        {
+            sb.AppendLine("【开盘预约】无");
+        }
+        else
+        {
+            // 所有待执行预约共享同一个执行点，只在小节标题写一次
+            var execTime = TomorrowOrderEngine.FormatExecutionTime(TomorrowOrderEngine.CalculateNextExecutionTime(DateTime.Now));
+            sb.AppendLine($"【开盘预约】执行点：{execTime}");
+            var codes = reservations.Where(r => r.StockCode != "ALL").Select(r => r.StockCode).ToList();
+            var names = codes.Count > 0 ? await Entry.StockNames.GetNamesAsync(codes) : [];
+            for (var i = 0; i < reservations.Count; i++)
+            {
+                var r = reservations[i];
+                var title = r.OrderType == 1 ? "开盘梭哈" : "开盘清仓";
+                var stockDesc = r.StockCode == "ALL"
+                    ? "全仓"
+                    : $"{(names.TryGetValue(r.StockCode, out var n) ? n : r.StockCode)} {StockCodeParser.ToDisplayCode(r.StockCode)}";
+                sb.AppendLine($"{i + 1}. {title} {stockDesc}");
+                sb.AppendLine($"   {r.CreatedAt:M/d HH:mm} 预约");
+            }
+        }
+
+        // --- 提示行（按需出现） ---
+        sb.AppendLine();
+        if (orders.Count > 0)
+        {
+            sb.AppendLine($"💡 撤单：{Entry.Config.GetTrigger("Cancel")} 单号");
+        }
+        if (reservations.Count > 0)
+        {
+            var hasClear = reservations.Any(r => r.OrderType == 0);
+            var hasAllIn = reservations.Any(r => r.OrderType == 1);
+            var cancelHint = hasClear && hasAllIn
+                ? $"{Entry.Config.GetTrigger("TomorrowClearCancel")} 代码/全仓 或 {Entry.Config.GetTrigger("TomorrowAllInCancel")} 代码"
+                : hasClear
+                    ? $"{Entry.Config.GetTrigger("TomorrowClearCancel")} 代码/全仓"
+                    : $"{Entry.Config.GetTrigger("TomorrowAllInCancel")} 代码";
+            sb.AppendLine($"{(orders.Count > 0 ? "" : "💡 ")}取消预约：{cancelHint}");
+        }
+
+        await SendAsync(g, p, sb.ToString());
         return EventHandleResult.Block;
     }
 
@@ -1393,6 +1499,7 @@ public class StockCommands : CommandHandlerBase
             {t("Rank")}          本群交易排行榜
             {t("GlobalRank")}          全局交易排行榜
             {t("History")}          个人交易历史
+            {t("OrderQuery")}          查看挂单与开盘预约
             {t("Help")}          显示本帮助
 
             ⚠️ 【交易规则】
