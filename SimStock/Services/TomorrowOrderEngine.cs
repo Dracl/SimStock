@@ -51,6 +51,13 @@ public sealed class TomorrowOrderEngine : IDisposable
 
     private async Task RunAsync(CancellationToken ct)
     {
+        // 插件在交易时段内启用时，不必等到下一次定时触发；先补执行当天已有的预约订单。
+        if (TradingHoursChecker.IsInTradingSession())
+        {
+            LogInfo("开盘订单引擎在交易时段启动，立即检查当天待执行订单");
+            await ExecutePendingOrdersAsync();
+        }
+
         while (!ct.IsCancellationRequested)
         {
             try
@@ -75,22 +82,31 @@ public sealed class TomorrowOrderEngine : IDisposable
         }
     }
 
-    /// <summary>计算下一个交易日候选执行时间（9:31；周末顺延）。</summary>
+    /// <summary>
+    /// 计算下一次候选执行时间：盘前在 9:31 执行，午间休市在 13:01 执行，
+    /// 盘后则顺延至下一个工作日的 9:31。
+    /// </summary>
     private static DateTime CalculateNextExecutionTime(DateTime now)
     {
-        var candidate = now.Date.AddHours(9).AddMinutes(31);
-        if (candidate > now)
+        var morningOpen = now.Date.AddHours(9).AddMinutes(31);
+        if (now.DayOfWeek is not (DayOfWeek.Saturday or DayOfWeek.Sunday) && morningOpen > now)
         {
-            return candidate;
+            return morningOpen;
         }
 
-        candidate = candidate.AddDays(1);
-        while (candidate.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday)
+        var afternoonOpen = now.Date.AddHours(13).AddMinutes(1);
+        if (now.DayOfWeek is not (DayOfWeek.Saturday or DayOfWeek.Sunday) && now.TimeOfDay >= new TimeSpan(11, 30, 1) && afternoonOpen > now)
         {
-            candidate = candidate.AddDays(1);
+            return afternoonOpen;
         }
 
-        return candidate;
+        var nextTradingDay = now.Date.AddDays(1);
+        while (nextTradingDay.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday)
+        {
+            nextTradingDay = nextTradingDay.AddDays(1);
+        }
+
+        return nextTradingDay.AddHours(9).AddMinutes(31);
     }
 
     private async Task ExecutePendingOrdersAsync()
