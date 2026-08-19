@@ -159,32 +159,7 @@ public static class SafetyChecker
         return (true, null);
     }
 
-    // 12. 涨跌停限制
-    // A股±10%，涨停时只能卖不能买，跌停时只能买不能卖
-    public static (bool passed, string? error) CheckPriceLimit(double lastClose, double currentPrice, bool isBuy)
-    {
-        if (lastClose <= 0)
-        {
-            return (true, null);
-        }
-
-        var limitUp = lastClose * 1.10;
-        var limitDown = lastClose * 0.90;
-
-        if (isBuy && currentPrice >= limitUp - 0.001)
-        {
-            return (false, "该股票已涨停，仅可卖出不可买入");
-        }
-
-        if (!isBuy && currentPrice <= limitDown + 0.001)
-        {
-            return (false, "该股票已跌停，仅可买入不可卖出");
-        }
-
-        return (true, null);
-    }
-
-    // 13. 停牌检查
+    // 12. 停牌检查
     public static (bool passed, string? error) CheckSuspension(double bid1, double ask1)
     {
         if (bid1 <= 0 && ask1 <= 0)

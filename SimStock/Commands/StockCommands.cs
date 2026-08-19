@@ -324,9 +324,6 @@ public class StockCommands : CommandHandlerBase
         var check = SafetyChecker.CheckSuspension(quote.Bid1, quote.Ask1);
         if (!check.passed) { await SendAsync(g, p, check.error!); return EventHandleResult.Block; }
 
-        check = SafetyChecker.CheckPriceLimit(quote.LastClose, quote.Price, isBuy: true);
-        if (!check.passed) { await SendAsync(g, p, check.error!); return EventHandleResult.Block; }
-
         if (quote.Ask1 <= 0) { await SendAsync(g, p, "该股票当前无卖盘，无法买入"); return EventHandleResult.Block; }
 
         var price = (decimal)quote.Ask1;
@@ -834,15 +831,6 @@ public class StockCommands : CommandHandlerBase
             if (!suspensionCheck.passed)
             {
                 sb.AppendLine($"⚠️ {pos.StockCode}: {suspensionCheck.error}");
-                skipCount++;
-                continue;
-            }
-
-            // 检查涨跌停
-            var priceCheck = SafetyChecker.CheckPriceLimit(quote.LastClose, quote.Price, isBuy: false);
-            if (!priceCheck.passed)
-            {
-                sb.AppendLine($"⚠️ {pos.StockCode}: {priceCheck.error}");
                 skipCount++;
                 continue;
             }
@@ -1407,7 +1395,7 @@ public class StockCommands : CommandHandlerBase
 
             ⚠️ 【交易规则】
             - T+1制度: 当日买入的股票次日方可卖出
-            - 涨跌停限制: ±10%，涨停只能卖、跌停只能买
+            - 盘口限制: 买入需要卖一报价，卖出需要买一报价；无对手盘时无法成交
             - 停牌股票无法交易
             - 手续费: 成交金额的0.03%，最低5元
             - 仅支持A股交易（不含指数/基金/债券）

@@ -80,12 +80,6 @@ public static class TradingService
             return (null, check.error, null);
         }
 
-        check = SafetyChecker.CheckPriceLimit(quote.LastClose, quote.Price, isBuy: true);
-        if (!check.passed)
-        {
-            return (null, check.error, null);
-        }
-
         if (quote.Ask1 <= 0)
         {
             return (null, "该股票当前无卖盘，无法买入", null);
@@ -203,12 +197,6 @@ public static class TradingService
         }
 
         check = SafetyChecker.CheckSuspension(quote.Bid1, quote.Ask1);
-        if (!check.passed)
-        {
-            return (null, check.error, null, null);
-        }
-
-        check = SafetyChecker.CheckPriceLimit(quote.LastClose, quote.Price, isBuy: true);
         if (!check.passed)
         {
             return (null, check.error, null, null);
@@ -347,12 +335,6 @@ public static class TradingService
             return (null, check.error, null);
         }
 
-        check = SafetyChecker.CheckPriceLimit(quote.LastClose, quote.Price, isBuy: false);
-        if (!check.passed)
-        {
-            return (null, check.error, null);
-        }
-
         if (quote.Bid1 <= 0)
         {
             return (null, "该股票当前无买盘，无法卖出", null);
@@ -484,12 +466,6 @@ public static class TradingService
             }
 
             check = SafetyChecker.CheckSuspension(quote.Bid1, quote.Ask1);
-            if (!check.passed)
-            {
-                return (null, check.error, null, null);
-            }
-
-            check = SafetyChecker.CheckPriceLimit(quote.LastClose, quote.Price, isBuy: false);
             if (!check.passed)
             {
                 return (null, check.error, null, null);
