@@ -161,43 +161,48 @@ public sealed class TomorrowOrderEngine : IDisposable
                 return;
             }
 
-            var failedCount = 0;
+            var reports = new Dictionary<long, GroupReport>();
             foreach (var order in pendingOrders)
             {
+                if (!reports.TryGetValue(order.GroupId, out var report))
+                {
+                    report = new GroupReport(order.GroupId);
+                    reports[order.GroupId] = report;
+                }
+                report.Mention(order.QQ);
+
                 try
                 {
                     var account = await Entry.Db.Queryable<Account>().FirstAsync(a => a.QQ == order.QQ);
                     if (account is null)
                     {
-                        await MarkFailedAsync(order, "账户不存在");
-                        failedCount++;
+                        await MarkFailedAsync(order, "账户不存在", report);
                         continue;
                     }
 
                     if (order.OrderType == 1)
                     {
-                        if (!await ExecuteAllInAsync(order, account))
-                        {
-                            failedCount++;
-                        }
+                        await ExecuteAllInAsync(order, account, report);
                         continue;
                     }
 
-                    if (!await ExecuteClearAsync(order, account))
-                    {
-                        failedCount++;
-                    }
+                    await ExecuteClearAsync(order, account, report);
                 }
                 catch (Exception ex)
                 {
-                    await MarkFailedAsync(order, $"执行异常：{ex.Message}");
-                    failedCount++;
+                    await MarkFailedAsync(order, $"执行异常：{ex.Message}", report);
                 }
             }
 
-            if (failedCount > 0)
+            foreach (var report in reports.Values)
             {
-                LogWarning($"开盘订单：{failedCount} 个订单执行失败");
+                if (!report.HasLines)
+                {
+                    continue;
+                }
+
+                LogInfo($"开盘订单：群 {report.GroupId} 结算 成功 {report.SuccessCount} / 跳过 {report.SkipCount} / 失败 {report.FailCount}");
+                await SendGroupMessageAsync(report.GroupId, report.BuildMessage());
             }
         }
         catch (Exception ex)
@@ -206,15 +211,15 @@ public sealed class TomorrowOrderEngine : IDisposable
         }
     }
 
-    private async Task<bool> ExecuteClearAsync(TomorrowOrder order, Account account)
+    private async Task ExecuteClearAsync(TomorrowOrder order, Account account, GroupReport report)
     {
         var positions = await AccountService.GetPositionsAsync(account.Id);
         if (order.StockCode == "ALL")
         {
             if (positions.Count == 0)
             {
-                await MarkFailedAsync(order, "无持仓");
-                return false;
+                await MarkFailedAsync(order, "无持仓", report);
+                return;
             }
 
             var successCount = 0;
@@ -224,19 +229,37 @@ public sealed class TomorrowOrderEngine : IDisposable
                 var parsed = StockCodeParser.ParseNormalized(pos.StockCode);
                 if (!parsed.HasValue)
                 {
+                    report.Skip($"{pos.StockCode}: 股票代码格式错误");
                     skipCount++;
+                    LogInfo($"开盘清仓跳过：{order.QQ} {pos.StockCode} 股票代码格式错误");
                     continue;
                 }
 
                 var quote = await Entry.Quotes!.GetQuoteAsync(parsed.Value.market, parsed.Value.code);
                 if (quote is null || quote.Bid1 <= 0)
                 {
+                    var skipReason = quote is null ? "行情获取失败" : "无买盘，无法卖出";
+                    report.Skip($"{pos.StockCode}: {skipReason}");
                     skipCount++;
+                    LogInfo($"开盘清仓跳过：{order.QQ} {pos.StockCode} {skipReason}");
                     continue;
                 }
 
                 var (_, error, _) = await TradingService.MarketSellAsync(order.QQ, pos.StockCode, pos.Quantity, order.GroupId);
-                if (error is null) successCount++; else skipCount++;
+                if (error is null)
+                {
+                    var name = await Entry.StockNames.GetNameAsync(pos.StockCode);
+                    var price = (decimal)quote.Bid1;
+                    report.Success($"{name}（{StockCodeParser.ToDisplayCode(pos.StockCode)}） 卖出 {pos.Quantity} 股 @ {price:F2} 元");
+                    successCount++;
+                    LogInfo($"开盘清仓成功：{order.QQ} {pos.StockCode}（{name}）卖出 {pos.Quantity} 股 @ {price:F2} 元");
+                }
+                else
+                {
+                    report.Skip($"{pos.StockCode}: {error}");
+                    skipCount++;
+                    LogInfo($"开盘清仓跳过：{order.QQ} {pos.StockCode} {error}");
+                }
             }
 
             order.UpdatedAt = DateTime.Now;
@@ -245,111 +268,112 @@ public sealed class TomorrowOrderEngine : IDisposable
                 order.Status = 0; // 留待下一交易日继续处理
                 await Entry.Db!.Updateable(order).ExecuteCommandAsync();
                 LogInfo($"开盘清仓部分完成：{order.QQ} 全仓清仓，成功 {successCount} 只, 跳过 {skipCount} 只");
-                await SendGroupMessageAsync(order.GroupId,
-                    $"⚠️ [CQ:at,qq={order.QQ}] 全仓清仓部分完成：成功 {successCount} 只，跳过 {skipCount} 只（T+1/停牌/行情不可用），将在下个交易日自动继续，或使用 /取消开盘清仓 全仓 取消");
-                return true;
+                report.Info($"{skipCount} 只跳过（T+1/停牌/行情不可用），将在下个交易日自动继续，或使用 {Entry.Config.GetTrigger("TomorrowClearCancel")} 全仓 取消");
+                return;
             }
 
             order.Status = 1;
             await Entry.Db!.Updateable(order).ExecuteCommandAsync();
             LogInfo($"开盘清仓成功：{order.QQ} 全仓清仓，成功 {successCount} 只");
-            await SendGroupMessageAsync(order.GroupId, $"✅ [CQ:at,qq={order.QQ}] 全仓清仓完成！成功 {successCount} 只");
-            return true;
+            return;
         }
 
         var holding = positions.FirstOrDefault(x => x.StockCode == order.StockCode);
         if (holding is null || holding.Quantity <= 0)
         {
-            await MarkFailedAsync(order, "持仓不足");
-            return false;
+            await MarkFailedAsync(order, "持仓不足", report);
+            return;
         }
 
         var stock = StockCodeParser.ParseNormalized(order.StockCode);
         if (!stock.HasValue)
         {
-            await MarkFailedAsync(order, "股票代码格式错误");
-            return false;
+            await MarkFailedAsync(order, "股票代码格式错误", report);
+            return;
         }
 
         var singleQuote = await Entry.Quotes!.GetQuoteAsync(stock.Value.market, stock.Value.code);
         if (singleQuote is null || singleQuote.Bid1 <= 0)
         {
-            await MarkFailedAsync(order, "行情获取失败或无买盘");
-            return false;
+            await MarkFailedAsync(order, "行情获取失败或无买盘", report);
+            return;
         }
 
         var (_, sellError, _) = await TradingService.MarketSellAsync(order.QQ, order.StockCode, holding.Quantity, order.GroupId);
         if (sellError is not null)
         {
-            await MarkFailedAsync(order, sellError);
-            return false;
+            await MarkFailedAsync(order, sellError, report);
+            return;
         }
 
         order.Status = 1;
         order.UpdatedAt = DateTime.Now;
         await Entry.Db!.Updateable(order).ExecuteCommandAsync();
-        var name = await Entry.StockNames.GetNameAsync(order.StockCode);
-        LogInfo($"开盘清仓成功：{order.QQ} {order.StockCode}（{name}）卖出 {holding.Quantity} 股");
-        await SendGroupMessageAsync(order.GroupId, $"✅ [CQ:at,qq={order.QQ}] {order.StockCode}（{name}）开盘清仓成功！卖出 {holding.Quantity} 股");
-        return true;
+        var stockName = await Entry.StockNames.GetNameAsync(order.StockCode);
+        var sellPrice = (decimal)singleQuote.Bid1;
+        LogInfo($"开盘清仓成功：{order.QQ} {order.StockCode}（{stockName}）卖出 {holding.Quantity} 股 @ {sellPrice:F2} 元");
+        report.Success($"{stockName}（{StockCodeParser.ToDisplayCode(order.StockCode)}） 卖出 {holding.Quantity} 股 @ {sellPrice:F2} 元");
     }
 
-    private async Task<bool> ExecuteAllInAsync(TomorrowOrder order, Account account)
+    private async Task ExecuteAllInAsync(TomorrowOrder order, Account account, GroupReport report)
     {
         try
         {
             var parsed = StockCodeParser.ParseNormalized(order.StockCode);
             if (!parsed.HasValue)
             {
-                await MarkFailedAsync(order, "股票代码格式错误");
-                return false;
+                await MarkFailedAsync(order, "股票代码格式错误", report);
+                return;
             }
 
             var quote = await Entry.Quotes!.GetQuoteAsync(parsed.Value.market, parsed.Value.code);
             if (quote is null || quote.Ask1 <= 0)
             {
-                await MarkFailedAsync(order, "行情获取失败或无卖盘");
-                return false;
+                await MarkFailedAsync(order, "行情获取失败或无卖盘", report);
+                return;
             }
 
             var price = (decimal)quote.Ask1;
             var qty = TradingService.CalcAllInQuantity(account.Balance, price);
             if (qty < 100)
             {
-                await MarkFailedAsync(order, $"可用余额不足以买入 1 手（现价 {price:F2}，需 ≈{price * 100 * 1.0003m:N2} 元）");
-                return false;
+                await MarkFailedAsync(order, $"可用余额不足以买入 1 手（现价 {price:F2}，需 ≈{price * 100 * 1.0003m:N2} 元）", report);
+                return;
             }
 
             var (_, buyError, _) = await TradingService.MarketBuyAsync(order.QQ, order.StockCode, qty, order.GroupId);
             if (buyError is not null)
             {
-                await MarkFailedAsync(order, buyError);
-                return false;
+                await MarkFailedAsync(order, buyError, report);
+                return;
             }
 
             order.Status = 1;
             order.UpdatedAt = DateTime.Now;
             await Entry.Db!.Updateable(order).ExecuteCommandAsync();
             var name = await Entry.StockNames.GetNameAsync(order.StockCode);
-            LogInfo($"开盘梭哈成功：{order.QQ} {order.StockCode}（{name}）买入 {qty} 股，成交价 {price:F2}");
-            await SendGroupMessageAsync(order.GroupId, $"✅ [CQ:at,qq={order.QQ}] {order.StockCode}（{name}）开盘梭哈成功！买入 {qty} 股");
-            return true;
+            LogInfo($"开盘梭哈成功：{order.QQ} {order.StockCode}（{name}）买入 {qty} 股 @ {price:F2} 元");
+            report.Success($"{name}（{StockCodeParser.ToDisplayCode(order.StockCode)}） 买入 {qty} 股 @ {price:F2} 元");
         }
         catch (Exception ex)
         {
-            await MarkFailedAsync(order, $"执行异常：{ex.Message}");
-            return false;
+            await MarkFailedAsync(order, $"执行异常：{ex.Message}", report);
         }
     }
 
-    private static async Task MarkFailedAsync(TomorrowOrder order, string reason)
+    private static async Task MarkFailedAsync(TomorrowOrder order, string reason, GroupReport report)
     {
         order.Status = 3;
         order.FailureReason = reason;
         order.UpdatedAt = DateTime.Now;
         await Entry.Db!.Updateable(order).ExecuteCommandAsync();
+
         var action = order.OrderType == 1 ? "开盘梭哈" : "开盘清仓";
-        await SendGroupMessageAsync(order.GroupId, $"⚠️ [CQ:at,qq={order.QQ}] 的{action} {order.StockCode} 因 {reason} 执行失败，请手动处理");
+        var target = order.StockCode == "ALL"
+            ? "全仓"
+            : $"{await Entry.StockNames.GetNameAsync(order.StockCode)}（{StockCodeParser.ToDisplayCode(order.StockCode)}）";
+        LogWarning($"开盘订单失败：{order.QQ} {action} {target} {reason}");
+        report.Fail($"{action} {target}：{reason}");
     }
 
     private static async Task SendGroupMessageAsync(long groupId, string message)
