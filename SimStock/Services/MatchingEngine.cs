@@ -285,7 +285,7 @@ public class MatchingEngine : IDisposable
                                 var dir = order.OrderType == 1 ? "🔴买入" : "🟢卖出";
                                 var stockName = await Entry.StockNames.GetNameAsync(order.StockCode);
                                 var msg = $"🎯 [限价单成交通知]\n" +
-                                          $"📋 股票: {StockCodeParser.ToDisplayCode(order.StockCode)} {stockName}\n" +
+                                          $"📋 股票: {StockCodeParser.ToDisplayStock(stockName, order.StockCode)}\n" +
                                           $"📌 方向: {dir}\n" +
                                           $"📦 数量: {order.Quantity} 股\n" +
                                           $"💲 成交价: {execPrice:F2} 元\n" +
@@ -407,7 +407,7 @@ public class MatchingEngine : IDisposable
                         var dir = order.OrderType switch { 1 => "买入", 3 => "卖出", _ => "?" };
                         var stockName = await Entry.StockNames.GetNameAsync(order.StockCode);
                         sb.AppendLine($"  · {name}");
-                        sb.AppendLine($"    📋 {StockCodeParser.ToDisplayCode(order.StockCode)} {stockName}");
+                        sb.AppendLine($"    📋 {StockCodeParser.ToDisplayStock(stockName, order.StockCode)}");
                         sb.AppendLine($"    📌 {dir} {order.Quantity} 股");
                         sb.AppendLine($"    💲 委托价: {order.Price:F2}");
                     }
@@ -428,7 +428,7 @@ public class MatchingEngine : IDisposable
                     var dir = order.OrderType switch { 1 => "买入", 3 => "卖出", _ => "?" };
                     var stockName = await Entry.StockNames.GetNameAsync(order.StockCode);
                     var msg = $"🌙 本日已休市，挂单自动取消：\n" +
-                              $"📋 {StockCodeParser.ToDisplayCode(order.StockCode)} {stockName}\n" +
+                              $"📋 {StockCodeParser.ToDisplayStock(stockName, order.StockCode)}\n" +
                               $"📌 {dir} {order.Quantity} 股\n" +
                               $"💲 委托价: {order.Price:F2}";
                     await Entry.Api.MessageApi.SendPrivateMessageAsync(qq, msg);

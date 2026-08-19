@@ -235,11 +235,13 @@ public sealed class TomorrowOrderEngine : IDisposable
                     continue;
                 }
 
+                var displayName = StockCodeParser.ToDisplayStock(await Entry.StockNames.GetNameAsync(pos.StockCode), pos.StockCode);
+
                 var quote = await Entry.Quotes!.GetQuoteAsync(parsed.Value.market, parsed.Value.code);
                 if (quote is null || quote.Bid1 <= 0)
                 {
                     var skipReason = quote is null ? "行情获取失败" : "无买盘，无法卖出";
-                    report.Skip($"{pos.StockCode}: {skipReason}");
+                    report.Skip($"{displayName}: {skipReason}");
                     skipCount++;
                     LogInfo($"开盘清仓跳过：{order.QQ} {pos.StockCode} {skipReason}");
                     continue;
@@ -248,15 +250,14 @@ public sealed class TomorrowOrderEngine : IDisposable
                 var (_, error, _) = await TradingService.MarketSellAsync(order.QQ, pos.StockCode, pos.Quantity, order.GroupId);
                 if (error is null)
                 {
-                    var name = await Entry.StockNames.GetNameAsync(pos.StockCode);
                     var price = (decimal)quote.Bid1;
-                    report.Success($"{name}（{StockCodeParser.ToDisplayCode(pos.StockCode)}） 卖出 {pos.Quantity} 股 @ {price:F2} 元");
+                    report.Success($"{displayName} 卖出 {pos.Quantity} 股 @ {price:F2} 元");
                     successCount++;
-                    LogInfo($"开盘清仓成功：{order.QQ} {pos.StockCode}（{name}）卖出 {pos.Quantity} 股 @ {price:F2} 元");
+                    LogInfo($"开盘清仓成功：{order.QQ} {pos.StockCode} 卖出 {pos.Quantity} 股 @ {price:F2} 元");
                 }
                 else
                 {
-                    report.Skip($"{pos.StockCode}: {error}");
+                    report.Skip($"{displayName}: {error}");
                     skipCount++;
                     LogInfo($"开盘清仓跳过：{order.QQ} {pos.StockCode} {error}");
                 }
@@ -309,10 +310,10 @@ public sealed class TomorrowOrderEngine : IDisposable
         order.Status = 1;
         order.UpdatedAt = DateTime.Now;
         await Entry.Db!.Updateable(order).ExecuteCommandAsync();
-        var stockName = await Entry.StockNames.GetNameAsync(order.StockCode);
+        var stockDisplay = StockCodeParser.ToDisplayStock(await Entry.StockNames.GetNameAsync(order.StockCode), order.StockCode);
         var sellPrice = (decimal)singleQuote.Bid1;
-        LogInfo($"开盘清仓成功：{order.QQ} {order.StockCode}（{stockName}）卖出 {holding.Quantity} 股 @ {sellPrice:F2} 元");
-        report.Success($"{stockName}（{StockCodeParser.ToDisplayCode(order.StockCode)}） 卖出 {holding.Quantity} 股 @ {sellPrice:F2} 元");
+        LogInfo($"开盘清仓成功：{order.QQ} {order.StockCode} 卖出 {holding.Quantity} 股 @ {sellPrice:F2} 元");
+        report.Success($"{stockDisplay} 卖出 {holding.Quantity} 股 @ {sellPrice:F2} 元");
     }
 
     private async Task ExecuteAllInAsync(TomorrowOrder order, Account account, GroupReport report)
@@ -351,9 +352,9 @@ public sealed class TomorrowOrderEngine : IDisposable
             order.Status = 1;
             order.UpdatedAt = DateTime.Now;
             await Entry.Db!.Updateable(order).ExecuteCommandAsync();
-            var name = await Entry.StockNames.GetNameAsync(order.StockCode);
-            LogInfo($"开盘梭哈成功：{order.QQ} {order.StockCode}（{name}）买入 {qty} 股 @ {price:F2} 元");
-            report.Success($"{name}（{StockCodeParser.ToDisplayCode(order.StockCode)}） 买入 {qty} 股 @ {price:F2} 元");
+            var displayName = StockCodeParser.ToDisplayStock(await Entry.StockNames.GetNameAsync(order.StockCode), order.StockCode);
+            LogInfo($"开盘梭哈成功：{order.QQ} {order.StockCode} 买入 {qty} 股 @ {price:F2} 元");
+            report.Success($"{displayName} 买入 {qty} 股 @ {price:F2} 元");
         }
         catch (Exception ex)
         {
@@ -371,7 +372,7 @@ public sealed class TomorrowOrderEngine : IDisposable
         var action = order.OrderType == 1 ? "开盘梭哈" : "开盘清仓";
         var target = order.StockCode == "ALL"
             ? "全仓"
-            : $"{await Entry.StockNames.GetNameAsync(order.StockCode)}（{StockCodeParser.ToDisplayCode(order.StockCode)}）";
+            : StockCodeParser.ToDisplayStock(await Entry.StockNames.GetNameAsync(order.StockCode), order.StockCode);
         LogWarning($"开盘订单失败：{order.QQ} {action} {target} {reason}");
         report.Fail($"{action} {target}：{reason}");
     }
